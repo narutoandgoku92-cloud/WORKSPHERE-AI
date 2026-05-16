@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "826709313501",
+    "project_id": "worksphereai",
+    "storage_bucket": "worksphereai.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:826709313501:android:cc6053f8a968d4fafe5834",
+        "android_client_info": {
+          "package_name": "com.example.work_sphere_ai"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDZpA-FOWn_Ggh2KdHcL4BLOz6-LL4qCFo"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

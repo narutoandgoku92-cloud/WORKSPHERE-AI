@@ -1,0 +1,96 @@
+# backend/requirements.txt - Python dependencies for OptiWork AI Backend
+
+# Core Framework
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+python-multipart==0.0.6
+pydantic==2.5.0
+pydantic-settings==2.1.0
+
+# Database
+sqlalchemy==2.0.23
+alembic==1.13.1
+
+# Authentication & Security
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+cryptography==41.0.7
+python-dotenv==1.0.0
+PyJWT==2.12.1
+
+# AI/ML - Face Recognition
+# Optional: install face recognition libraries separately when using AI features
+# insightface==0.7.3
+# onnxruntime==1.26.0
+# onnxruntime-gpu==1.26.0  # Optional: for GPU support
+opencv-python==4.8.1.78
+numpy==2.4.5
+
+# Optional analytics dependencies
+# scikit-learn==1.8.0
+# pandas==3.0.3
+# scipy==1.11.4
+# statsmodels==0.14.0
+# prophet==1.1.5  # Optional: for advanced forecasting
+
+# Cache & Queue
+redis==5.0.1
+celery==5.3.4
+
+# AWS Integration
+boto3==1.29.7
+s3transfer==0.7.0
+
+# Email
+aiofiles==23.2.1
+
+# HTTP Client
+httpx==0.25.2
+aiohttp==3.9.1
+
+# Utilities
+python-dateutil==2.8.2
+pytz==2023.3
+requests==2.31.0
+typing-extensions==4.9.0
+
+# Logging & Monitoring
+loguru==0.7.2
+prometheus-client==0.19.0
+
+# Testing (optional)
+pytest==7.4.3
+pytest-asyncio==0.21.1
+pytest-cov==4.1.0
+
+# Development (optional)
+black==23.12.0
+flake8==6.1.0
+isort==5.13.2
+mypy==1.7.1
+
+# Documentation
+# swagger-ui==0.0.2  # Removed: FastAPI provides Swagger UI automatically
+
+# Rate Limiting
+slowapi==0.1.9
+
+# Data Validation
+email-validator==2.1.0
+phonenumbers==8.13.0
+
+# UUID Support
+# uuid6==1.0.3  # Removed: no backend import usage found, avoid Python 3.14 compatibility issues
+
+# Task Scheduling
+APScheduler==3.10.4
+
+# Stripe Integration
+stripe==7.0.0
+
+# PDF Generation
+reportlab==4.0.9
+
+# Optional Time series & Forecasting
+# statsmodels==0.14.0
+# prophet==1.1.5  # Optional: for advanced forecasting

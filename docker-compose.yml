@@ -1,0 +1,254 @@
+# docker-compose.yml - Local Development Environment
+
+version: '3.9'
+
+services:
+  # ========================================================================
+  # DATABASE
+  # ========================================================================
+
+  postgres:
+    image: postgres:15-alpine
+    container_name: optiwork_postgres
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: optiwork
+      POSTGRES_PASSWORD: optiwork_dev_password
+      POSTGRES_DB: optiwork
+      POSTGRES_INITDB_ARGS: "--locale=en_US.UTF-8 --encoding=UTF8"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./DATABASE_SCHEMA.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U optiwork"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - optiwork_network
+
+  # ========================================================================
+  # CACHE
+  # ========================================================================
+
+  redis:
+    image: redis:7-alpine
+    container_name: optiwork_redis
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes --requirepass redis_dev_password
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - optiwork_network
+
+  # ========================================================================
+  # BACKEND
+  # ========================================================================
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: optiwork_backend
+    ports:
+      - "8000:8000"
+    environment:
+      DEBUG: "true"
+      ENVIRONMENT: "development"
+      DATABASE_URL: "postgresql://optiwork:optiwork_dev_password@postgres:5432/optiwork"
+      REDIS_URL: "redis://:redis_dev_password@redis:6379/0"
+      SECRET_KEY: "dev-secret-key-change-in-production"
+      ALLOWED_HOSTS: "localhost,127.0.0.1,backend"
+      CORS_ORIGINS: "http://localhost:3000,http://localhost:3001,http://localhost:8080"
+      AWS_REGION: "us-east-1"
+      AWS_S3_BUCKET: "optiwork-dev"
+      SMTP_SERVER: "smtp.gmail.com"
+      SMTP_PORT: "587"
+      USE_GPU: "false"
+    volumes:
+      - ./backend:/app
+      - /app/__pycache__
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - optiwork_network
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+
+  # ========================================================================
+  # CELERY WORKER
+  # ========================================================================
+
+  celery_worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: optiwork_celery_worker
+    environment:
+      DEBUG: "true"
+      ENVIRONMENT: "development"
+      DATABASE_URL: "postgresql://optiwork:optiwork_dev_password@postgres:5432/optiwork"
+      REDIS_URL: "redis://:redis_dev_password@redis:6379/1"
+      CELERY_BROKER_URL: "redis://:redis_dev_password@redis:6379/1"
+      CELERY_RESULT_BACKEND: "redis://:redis_dev_password@redis:6379/2"
+    volumes:
+      - ./backend:/app
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - optiwork_network
+    command: celery -A tasks worker --loglevel=info
+
+  # ========================================================================
+  # CELERY BEAT (SCHEDULER)
+  # ========================================================================
+
+  celery_beat:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: optiwork_celery_beat
+    environment:
+      DEBUG: "true"
+      ENVIRONMENT: "development"
+      DATABASE_URL: "postgresql://optiwork:optiwork_dev_password@postgres:5432/optiwork"
+      REDIS_URL: "redis://:redis_dev_password@redis:6379/1"
+      CELERY_BROKER_URL: "redis://:redis_dev_password@redis:6379/1"
+      CELERY_RESULT_BACKEND: "redis://:redis_dev_password@redis:6379/2"
+    volumes:
+      - ./backend:/app
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - optiwork_network
+    command: celery -A tasks beat --loglevel=info
+
+  # ========================================================================
+  # WEB DASHBOARD
+  # ========================================================================
+
+  web:
+    build:
+      context: ./web
+      dockerfile: Dockerfile
+    container_name: optiwork_web
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: "development"
+      NEXT_PUBLIC_API_URL: "http://localhost:8000/api/v1"
+      NEXT_PUBLIC_ENVIRONMENT: "development"
+    volumes:
+      - ./web:/app
+      - /app/node_modules
+      - /app/.next
+    depends_on:
+      - backend
+    networks:
+      - optiwork_network
+    command: npm run dev
+
+  # ========================================================================
+  # MESSAGING (Optional)
+  # ========================================================================
+
+  mailhog:
+    image: mailhog/mailhog:v1.0.1
+    container_name: optiwork_mailhog
+    ports:
+      - "1025:1025"
+      - "8025:8025"
+    networks:
+      - optiwork_network
+
+  # ========================================================================
+  # MONITORING (Optional)
+  # ========================================================================
+
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: optiwork_pgadmin
+    ports:
+      - "5050:80"
+    environment:
+      PGADMIN_DEFAULT_EMAIL: "admin@optiwork.local"
+      PGADMIN_DEFAULT_PASSWORD: "admin"
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+    depends_on:
+      - postgres
+    networks:
+      - optiwork_network
+
+  redis-commander:
+    image: rediscommander/redis-commander:latest
+    container_name: optiwork_redis_commander
+    ports:
+      - "8081:8081"
+    environment:
+      REDIS_HOSTS: "local:redis:6379:0:redis_dev_password"
+    depends_on:
+      - redis
+    networks:
+      - optiwork_network
+
+# ============================================================================
+# VOLUMES
+# ============================================================================
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  pgadmin_data:
+    driver: local
+
+# ============================================================================
+# NETWORKS
+# ============================================================================
+
+networks:
+  optiwork_network:
+    driver: bridge
+
+# ============================================================================
+# COMMANDS
+# ============================================================================
+#
+# Start all services:
+# docker-compose up -d
+#
+# Start specific service:
+# docker-compose up -d postgres redis backend
+#
+# View logs:
+# docker-compose logs -f backend
+#
+# Run database migrations:
+# docker-compose exec backend alembic upgrade head
+#
+# Stop all services:
+# docker-compose down
+#
+# Reset database:
+# docker-compose down -v
+# docker-compose up -d postgres
+#
+# Access services:
+# Backend API: http://localhost:8000
+# Web Dashboard: http://localhost:3000
+# PgAdmin: http://localhost:5050
+# Redis Commander: http://localhost:8081
+# MailHog: http://localhost:8025
