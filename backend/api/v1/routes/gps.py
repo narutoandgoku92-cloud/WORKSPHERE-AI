@@ -27,8 +27,8 @@ async def update_location(
 ):
     """Update employee GPS location"""
     
-    # Get employee
-    employee = EmployeeRepository.get_by_id(db, current_user.id)
+    # Get employee for current authenticated user
+    employee = EmployeeRepository.get_by_user_id(db, current_user.id)
     if not employee:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -69,7 +69,7 @@ async def get_latest_location(
 ):
     """Get latest GPS location"""
     
-    employee = EmployeeRepository.get_by_id(db, current_user.id)
+    employee = EmployeeRepository.get_by_user_id(db, current_user.id)
     if not employee:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -99,7 +99,7 @@ async def validate_geofence(
 ):
     """Validate if location is inside geofence"""
     
-    employee = EmployeeRepository.get_by_id(db, current_user.id)
+    employee = EmployeeRepository.get_by_user_id(db, current_user.id)
     if not employee:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

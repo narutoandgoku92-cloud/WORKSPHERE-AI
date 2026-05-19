@@ -47,7 +47,7 @@ curl -X POST http://localhost:8000/api/v1/auth/login \
   -H "Content-Type: application/json" \
   -d '{
     "email": "admin@optiwork.ai",
-    "password": "password123"
+    "password": "admin_password"
   }'
 ```
 
@@ -88,7 +88,7 @@ curl -X POST http://localhost:8000/api/v1/auth/change-password \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer ACCESS_TOKEN" \
   -d '{
-    "old_password": "password123",
+    "old_password": "admin_password",
     "new_password": "NewPassword123!"
   }'
 ```
@@ -584,7 +584,7 @@ Create a collection with pre-configured requests for:
 # Get new token
 curl -X POST http://localhost:8000/api/v1/auth/login \
   -H "Content-Type: application/json" \
-  -d '{"email":"admin@optiwork.ai","password":"password123"}'
+  -d '{"email":"admin@optiwork.ai","password":"admin_password"}'
 
 # Use token in Authorization header
 -H "Authorization: Bearer YOUR_NEW_TOKEN"

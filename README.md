@@ -34,7 +34,7 @@ cd lib && flutter pub get && flutter run
 **Demo Credentials**:
 ```
 Email:    admin@optiwork.ai
-Password: password123
+Password: admin_password
 ```
 
 ---

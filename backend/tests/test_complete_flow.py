@@ -318,7 +318,7 @@ class TestDataConsistency:
         # Login
         login = client.post(
             "/api/v1/auth/login",
-            json={"email": "admin@optiwork.ai", "password": "password123"}
+            json={"email": "admin@optiwork.ai", "password": "admin_password"}
         )
         assert login.status_code == 200
         token = login.json()["access_token"]

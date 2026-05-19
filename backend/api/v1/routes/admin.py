@@ -6,11 +6,8 @@ from sqlalchemy.orm import Session
 from core.database import get_db
 from schemas import DashboardSummary, AdminDashboardResponse
 from repositories import (
-    EmployeeRepository,
-    AttendanceRepository,
-    AnalyticsRepository,
-    OrganizationRepository,
-    AuditLogRepository,
+    EmployeeRepository, AttendanceRepository, 
+    AnalyticsRepository, OrganizationRepository
 )
 from api.v1.routes.auth import get_current_user
 
@@ -124,27 +121,12 @@ async def get_audit_logs(
             detail="Not authorized"
         )
     
-    logs = AuditLogRepository.list_org_logs(db, current_user.org_id, skip=skip, limit=limit)
-    serialized_logs = [
-        {
-            "id": log.id,
-            "action": log.action,
-            "resource_type": log.resource_type,
-            "resource_id": log.resource_id,
-            "user_id": log.user_id,
-            "status": log.status,
-            "error_message": log.error_message,
-            "created_at": log.created_at,
-            "updated_at": log.updated_at,
-        }
-        for log in logs
-    ]
-
+    # Placeholder for audit logs
     return {
-        "logs": serialized_logs,
-        "total": len(serialized_logs),
+        "logs": [],
+        "total": 0,
         "skip": skip,
-        "limit": limit,
+        "limit": limit
     }
 
 @router.post("/settings")

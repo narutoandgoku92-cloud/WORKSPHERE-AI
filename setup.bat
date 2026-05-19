@@ -138,7 +138,7 @@ echo.
 echo Next Steps:
 echo   1. Open http://localhost:8000/api/docs to view API endpoints
 echo   2. Run 'flutter run' to start the mobile app
-echo   3. Use demo credentials: admin@optiwork.ai / password123
+echo   3. Use demo credentials: admin@optiwork.ai / admin_password
 echo.
 echo View Logs:
 echo   docker-compose logs -f [service]

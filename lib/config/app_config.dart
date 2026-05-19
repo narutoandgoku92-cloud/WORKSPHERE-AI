@@ -1,79 +1,72 @@
-// lib/config/app_config.dart
+﻿// lib/config/app_config.dart
 
 import 'package:flutter/foundation.dart';
 
 class AppConfig {
-  // App Configuration
   static const String appName = 'WorkSphere AI';
   static const String appVersion = '1.0.0';
 
-  // Environment
-  static const String environment = 'development'; // development, staging, production
+  static const String environment = String.fromEnvironment('ENVIRONMENT', defaultValue: 'development');
+  static const String _apiBaseUrl = String.fromEnvironment('API_BASE_URL', defaultValue: '');
+  static const String _defaultApiBaseUrl = String.fromEnvironment('API_DEFAULT_BASE_URL', defaultValue: '');
 
-  // API Configuration
-  // IMPORTANT FOR PHYSICAL DEVICES:
-  // Physical Android devices CANNOT use 10.0.2.2 (emulator proxy).
-  // You MUST provide your PC's local network IP when running on real hardware:
-  //
-  //   flutter run --dart-define=API_BASE_URL=http://192.168.1.X:8000/api/v1
-  //
-  // Find your PC IP on Windows:   ipconfig | findstr IPv4
-  // Find your PC IP on Mac/Linux: ifconfig | grep inet
-  //
-  // Ensure phone and PC are on same Wi-Fi. Emulator will use 10.0.2.2.
-  static const String _environmentApiBaseUrl = String.fromEnvironment('API_BASE_URL', defaultValue: '');
-  static const String _androidEmulatorApiBaseUrl = 'http://10.0.2.2:8000/api/v1';
-  static const String _lanApiBaseUrl = 'http://<YOUR_LAN_IP>:8000/api/v1';
+  static final Duration apiTimeout = Duration(seconds: int.fromEnvironment('API_TIMEOUT_SECONDS', defaultValue: 30));
+  static const int maxRetryAttempts = 3;
+  static const int maxRefreshRetries = 1;
+  static const int retryBaseDelayMs = 500;
 
   static String get apiBaseUrl {
-    // Priority 1: Explicit environment override (required for physical devices)
-    if (_environmentApiBaseUrl.isNotEmpty) {
-      if (kDebugMode) print('[AppConfig] ✓ Using API_BASE_URL: $_environmentApiBaseUrl');
-      return _environmentApiBaseUrl;
+    if (_apiBaseUrl.isNotEmpty) {
+      return _normalizeApiBaseUrl(_apiBaseUrl);
     }
 
-    // Priority 2: Web
+    if (_defaultApiBaseUrl.isNotEmpty) {
+      return _normalizeApiBaseUrl(_defaultApiBaseUrl);
+    }
+
+    if (environment == 'production' || environment == 'staging') {
+      throw StateError('API_BASE_URL must be provided with --dart-define=API_BASE_URL for staging and production builds.');
+    }
+
     if (kIsWeb) {
-      if (kDebugMode) print('[AppConfig] Using web API: $_lanApiBaseUrl');
-      return _lanApiBaseUrl;
+      throw StateError('Web builds must provide API_BASE_URL via --dart-define=API_BASE_URL');
     }
 
-    // Priority 3: Android
     if (defaultTargetPlatform == TargetPlatform.android) {
-      if (kDebugMode) {
-        print('[AppConfig] ⚠️ ANDROID DETECTED: Using emulator URL');
-        print('[AppConfig] ⚠️ If on PHYSICAL DEVICE, login will FAIL!');
-        print('[AppConfig] ⚠️ Run: flutter run --dart-define=API_BASE_URL=http://YOUR_PC_IP:8000/api/v1');
-      }
-      return _androidEmulatorApiBaseUrl;
+      return _normalizeApiBaseUrl('http://10.0.2.2:8000/api/v1');
     }
 
-    // Default
-    if (kDebugMode) print('[AppConfig] Using default API: $_lanApiBaseUrl');
-    return _lanApiBaseUrl;
+    return _normalizeApiBaseUrl('http://127.0.0.1:8000/api/v1');
   }
 
-  static const Duration apiTimeout = Duration(seconds: 30);
+  static String _normalizeApiBaseUrl(String url) {
+    final sanitized = url.trim();
+    final normalized = sanitized.endsWith('/') ? sanitized.substring(0, sanitized.length - 1) : sanitized;
 
-  // Firebase Configuration
-  static const String sentryDsn = ''; // Add your Sentry DSN here
+    final uri = Uri.parse(normalized);
+    if (isProduction && uri.scheme != 'https') {
+      throw StateError('Production API_BASE_URL must use https://');
+    }
 
-  // Feature Flags
+    final base = normalized.replaceAll(RegExp(r'(/api/v1)+$'), '');
+    return '$base/api/v1';
+  }
+
+  static bool get isProduction => environment == 'production';
+  static bool get isStaging => environment == 'staging';
+  static bool get requireSecureTransport => isProduction || isStaging;
+
   static const bool enableFaceRecognition = true;
   static const bool enableGpsVerification = true;
   static const bool enableNotifications = true;
   static const bool enableAnalytics = true;
 
-  // Security
   static const int sessionTimeoutMinutes = 60;
   static const bool requireBiometricAuth = false;
 
-  // UI Configuration
   static const double defaultBorderRadius = 8.0;
   static const Duration defaultAnimationDuration = Duration(milliseconds: 300);
 
-  // Attendance Configuration
-  static const double gpsAccuracyThreshold = 100.0; // meters
+  static const double gpsAccuracyThreshold = 100.0;
   static const Duration faceRecognitionTimeout = Duration(seconds: 30);
-  static const int maxRetryAttempts = 3;
 }

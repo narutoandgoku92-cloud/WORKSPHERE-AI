@@ -1,4 +1,4 @@
-# backend/requirements.txt - Python dependencies for OptiWork AI Backend
+﻿# backend/requirements.txt - Python dependencies for OptiWork AI Backend
 
 # Core Framework
 fastapi==0.104.1
@@ -16,22 +16,19 @@ python-jose[cryptography]==3.3.0
 passlib[bcrypt]==1.7.4
 cryptography==41.0.7
 python-dotenv==1.0.0
-PyJWT==2.12.1
+PyJWT==2.8.1
+psycopg[binary]==3.1.11
+gunicorn==22.1.0
 
 # AI/ML - Face Recognition
-# Optional: install face recognition libraries separately when using AI features
-# insightface==0.7.3
-# onnxruntime==1.26.0
-# onnxruntime-gpu==1.26.0  # Optional: for GPU support
+insightface==0.7.3
+onnxruntime==1.17.1
+onnxruntime-gpu==1.17.1  # Optional: for GPU support
 opencv-python==4.8.1.78
-numpy==2.4.5
-
-# Optional analytics dependencies
-# scikit-learn==1.8.0
-# pandas==3.0.3
-# scipy==1.11.4
-# statsmodels==0.14.0
-# prophet==1.1.5  # Optional: for advanced forecasting
+numpy==1.24.3
+scikit-learn==1.3.2
+pandas==2.1.3
+scipy==1.11.4
 
 # Cache & Queue
 redis==5.0.1
@@ -70,7 +67,7 @@ isort==5.13.2
 mypy==1.7.1
 
 # Documentation
-# swagger-ui==0.0.2  # Removed: FastAPI provides Swagger UI automatically
+swagger-ui==0.0.2
 
 # Rate Limiting
 slowapi==0.1.9
@@ -80,7 +77,7 @@ email-validator==2.1.0
 phonenumbers==8.13.0
 
 # UUID Support
-# uuid6==1.0.3  # Removed: no backend import usage found, avoid Python 3.14 compatibility issues
+uuid6==1.0.3
 
 # Task Scheduling
 APScheduler==3.10.4
@@ -91,6 +88,6 @@ stripe==7.0.0
 # PDF Generation
 reportlab==4.0.9
 
-# Optional Time series & Forecasting
-# statsmodels==0.14.0
-# prophet==1.1.5  # Optional: for advanced forecasting
+# Time series & Forecasting
+statsmodels==0.14.0
+prophet==1.1.5  # Optional: for advanced forecasting

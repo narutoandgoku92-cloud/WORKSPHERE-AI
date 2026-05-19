@@ -28,7 +28,7 @@ def admin_credentials():
     """Admin test credentials"""
     return {
         "email": "admin@optiwork.ai",
-        "password": "password123"
+        "password": "admin_password"
     }
 
 @pytest.fixture
@@ -263,7 +263,7 @@ def test_get_employee_attendance_history(auth_headers, check_in_data):
         "/api/v1/auth/login",
         json={
             "email": "admin@optiwork.ai",
-            "password": "password123"
+            "password": "admin_password"
         }
     )
     employee_id = login_response.json()["user"]["id"]

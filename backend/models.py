@@ -7,7 +7,6 @@ from sqlalchemy.sql import func
 from datetime import datetime
 import uuid
 
-from core.config import settings
 from core.database import Base
 
 # ============================================================================
@@ -68,19 +67,20 @@ class User(Base):
     
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     org_id = Column(String(36), ForeignKey("organizations.id"), nullable=False, index=True)
-    email = Column(String(255), nullable=False)
+    employee_id = Column(String(36), ForeignKey("employees.id"), nullable=True, unique=True, index=True)
+    email = Column(String(255), nullable=False, unique=True)
     password_hash = Column(String(255), nullable=False)
     full_name = Column(String(255), nullable=False)
-    role = Column(String(50), default="admin")  # admin, manager, hr, viewer
+    role = Column(String(50), default="admin")  # admin, manager, hr, employee, viewer
     is_active = Column(Boolean, default=True)
     last_login = Column(DateTime, nullable=True)
+    token_invalid_before = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
     # Relationships
     organization = relationship("Organization", back_populates="users")
-    
-    __table_args__ = (UniqueConstraint('org_id', 'email', name='uq_org_user_email'),)
+    employee = relationship("Employee", back_populates="user", uselist=False)
 
 # ============================================================================
 # EMPLOYEE MODEL
@@ -112,6 +112,7 @@ class Employee(Base):
     attendance_logs = relationship("AttendanceLog", back_populates="employee", cascade="all, delete-orphan")
     gps_logs = relationship("GPSLog", back_populates="employee", cascade="all, delete-orphan")
     payroll_records = relationship("PayrollRecord", back_populates="employee", cascade="all, delete-orphan")
+    user = relationship("User", back_populates="employee", uselist=False)
     
     __table_args__ = (UniqueConstraint('org_id', 'employee_id', name='uq_org_employee_id'),)
 
@@ -235,7 +236,7 @@ class PayrollRecord(Base):
     total_pay = Column(Float, default=0.0)
     deductions = Column(Float, default=0.0)
     net_pay = Column(Float, default=0.0)
-    payment_status = Column(String(50), default="pending")  # pending, processing, paid, failed
+    payment_status = Column(String(50), default="pending")  # pending, processed, paid
     payment_date = Column(DateTime, nullable=True)
     notes = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
@@ -244,65 +245,6 @@ class PayrollRecord(Base):
     # Relationships
     employee = relationship("Employee", back_populates="payroll_records")
     organization = relationship("Organization")
-
-# ============================================================================
-# PAYMENT TRANSACTION MODEL
-# ============================================================================
-
-class PaymentTransaction(Base):
-    """External Squad payment transaction history"""
-    __tablename__ = "payment_transactions"
-
-    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    org_id = Column(String(36), ForeignKey("organizations.id"), nullable=False, index=True)
-    employee_id = Column(String(36), ForeignKey("employees.id"), nullable=False, index=True)
-    payroll_record_id = Column(String(36), ForeignKey("payroll_records.id"), nullable=True, index=True)
-    external_transaction_id = Column(String(255), nullable=True, index=True)
-    provider = Column(String(100), default="squad")
-    amount = Column(Float, nullable=False)
-    currency = Column(String(10), default=settings.PAYROLL_DEFAULT_CURRENCY)
-    status = Column(String(50), default="pending")
-    failure_reason = Column(Text, nullable=True)
-    provider_response = Column(Text, nullable=True)
-    provider_metadata = Column(Text, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-
-    # Relationships
-    organization = relationship("Organization")
-    employee = relationship("Employee")
-    disbursement = relationship("SalaryDisbursement", back_populates="transaction", uselist=False)
-
-# ============================================================================
-# SALARY DISBURSEMENT MODEL
-# ============================================================================
-
-class SalaryDisbursement(Base):
-    """Salary payout details for payroll processing"""
-    __tablename__ = "salary_disbursements"
-
-    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    org_id = Column(String(36), ForeignKey("organizations.id"), nullable=False, index=True)
-    employee_id = Column(String(36), ForeignKey("employees.id"), nullable=False, index=True)
-    payroll_record_id = Column(String(36), ForeignKey("payroll_records.id"), nullable=True, index=True)
-    transaction_id = Column(String(36), ForeignKey("payment_transactions.id"), nullable=True, index=True)
-    amount = Column(Float, nullable=False)
-    currency = Column(String(10), default=settings.PAYROLL_DEFAULT_CURRENCY)
-    status = Column(String(50), default="pending")  # pending, succeeded, failed
-    bank_name = Column(String(255), nullable=True)
-    bank_account_mask = Column(String(50), nullable=True)
-    account_holder_name = Column(String(255), nullable=True)
-    description = Column(Text, nullable=True)
-    initiated_at = Column(DateTime, default=datetime.utcnow)
-    completed_at = Column(DateTime, nullable=True)
-    failure_reason = Column(Text, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-
-    # Relationships
-    organization = relationship("Organization")
-    employee = relationship("Employee")
-    transaction = relationship("PaymentTransaction", back_populates="disbursement")
 
 # ============================================================================
 # ANALYTICS MODEL

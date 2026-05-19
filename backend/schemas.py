@@ -2,7 +2,7 @@
 
 from pydantic import BaseModel, EmailStr, Field, field_validator
 from datetime import datetime
-from typing import Optional, List, Dict, Any
+from typing import Optional, List
 from enum import Enum
 
 # ============================================================================
@@ -47,6 +47,22 @@ class ChangePasswordRequest(BaseModel):
     old_password: str
     new_password: str = Field(..., min_length=8, max_length=100)
     confirm_password: str
+
+class RegisterRequest(BaseModel):
+    email: EmailStr
+    password: str = Field(..., min_length=8, max_length=100)
+    full_name: str = Field(..., min_length=2, max_length=255)
+    role: UserRole = UserRole.ADMIN
+    organization_id: Optional[str] = None
+    organization_name: Optional[str] = None
+    organization_email: Optional[EmailStr] = None
+    employee_id: Optional[str] = None
+
+    @field_validator('organization_email')
+    def email_required_for_org(cls, value, info):
+        if info.data.get('organization_id') is None and not value:
+            raise ValueError('organization_email is required when creating a new organization')
+        return value
 
 # ============================================================================
 # USER SCHEMAS
@@ -319,63 +335,6 @@ class PayrollReportRequest(BaseModel):
     period_start: datetime
     period_end: datetime
     department_id: Optional[str] = None
-
-class BankDetails(BaseModel):
-    bank_name: str = Field(..., min_length=2, max_length=255)
-    account_holder_name: str = Field(..., min_length=2, max_length=255)
-    account_number: str = Field(..., min_length=6, max_length=34)
-    routing_number: Optional[str] = Field(None, min_length=3, max_length=20)
-    account_type: Optional[str] = None
-
-class SalaryPayoutRequest(BaseModel):
-    employee_id: str
-    period_start: datetime
-    period_end: datetime
-    bank_details: BankDetails
-    currency: Optional[str] = None
-    description: Optional[str] = None
-
-class BulkSalaryPayoutRequest(BaseModel):
-    payouts: List[SalaryPayoutRequest]
-
-class PaymentStatus(str, Enum):
-    PENDING = "pending"
-    PROCESSING = "processing"
-    SUCCEEDED = "succeeded"
-    FAILED = "failed"
-
-class SalaryPayoutResult(BaseModel):
-    employee_id: str
-    payroll_record_id: Optional[str] = None
-    salary_disbursement_id: Optional[str] = None
-    transaction_id: Optional[str] = None
-    status: str
-    amount: float
-    currency: str
-    message: str
-
-class TransactionResponse(BaseModel):
-    id: str
-    org_id: str
-    employee_id: str
-    amount: float
-    currency: str
-    status: str
-    provider: Optional[str] = None
-    external_transaction_id: Optional[str] = None
-    failure_reason: Optional[str] = None
-    created_at: datetime
-    updated_at: datetime
-
-    class Config:
-        from_attributes = True
-
-class PaymentStatusResponse(BaseModel):
-    id: str
-    status: str
-    type: str
-    message: str
-    details: Optional[Dict[str, Any]] = None
 
 # ============================================================================
 # DASHBOARD SCHEMAS

@@ -32,48 +32,21 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       return;
     }
 
-    if (!mounted) {
-      return;
-    }
-
     setState(() => _isLoading = true);
 
     final authNotifier = ref.read(authProvider.notifier);
-    bool success = false;
-    String errorMessage = 'Login failed';
+    final success = await authNotifier.login(
+      _emailController.text,
+      _passwordController.text,
+    );
 
-    try {
-      success = await authNotifier.login(
-        _emailController.text,
-        _passwordController.text,
-      );
-      if (!mounted) {
-        return;
-      }
-
-      if (!success) {
-        errorMessage = ref.read(authProvider).error ?? errorMessage;
-      }
-    } catch (e) {
-      if (!mounted) {
-        return;
-      }
-      errorMessage = 'Login failed: ${e.toString()}';
-    } finally {
-      if (mounted) {
-        setState(() => _isLoading = false);
-      }
-    }
-
-    if (!mounted) {
-      return;
-    }
+    setState(() => _isLoading = false);
 
     if (success) {
       context.go('/dashboard');
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(errorMessage)),
+        SnackBar(content: Text(ref.read(authProvider).error ?? 'Login failed')),
       );
     }
   }

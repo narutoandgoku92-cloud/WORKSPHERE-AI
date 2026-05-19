@@ -270,7 +270,7 @@ flutter run
 ### Access Services
 - **API Docs**: http://localhost:8000/api/docs
 - **Database**: http://localhost:5050
-- **Demo Login**: admin@optiwork.ai / password123
+- **Demo Login**: admin@optiwork.ai / admin_password
 
 ---
 

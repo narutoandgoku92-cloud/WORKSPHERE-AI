@@ -8,8 +8,8 @@ import logging
 
 from models import (
     User, Employee, Organization, Department, AttendanceLog, 
-    FaceEmbedding, GPSLog, PayrollRecord, PaymentTransaction,
-    SalaryDisbursement, EmployeeAnalytics, Geofence, AuditLog
+    FaceEmbedding, GPSLog, PayrollRecord, EmployeeAnalytics,
+    Geofence, AuditLog
 )
 from schemas import EmployeeStatus
 
@@ -40,6 +40,11 @@ class OrganizationRepository:
         """Get organization by ID"""
         return db.query(Organization).filter(Organization.id == org_id).first()
 
+    @staticmethod
+    def get_by_email(db: Session, email: str) -> Optional[Organization]:
+        """Get organization by email"""
+        return db.query(Organization).filter(Organization.email == email).first()
+
 # ============================================================================
 # USER REPOSITORY
 # ============================================================================
@@ -48,14 +53,23 @@ class UserRepository:
     """User/Admin database operations"""
     
     @staticmethod
-    def create(db: Session, org_id: str, email: str, password_hash: str, full_name: str, role: str = "admin"):
+    def create(
+        db: Session,
+        org_id: str,
+        email: str,
+        password_hash: str,
+        full_name: str,
+        role: str = "admin",
+        employee_id: Optional[str] = None
+    ):
         """Create new user"""
         user = User(
             org_id=org_id,
             email=email,
             password_hash=password_hash,
             full_name=full_name,
-            role=role
+            role=role,
+            employee_id=employee_id
         )
         db.add(user)
         db.commit()
@@ -64,10 +78,15 @@ class UserRepository:
     
     @staticmethod
     def get_by_email(db: Session, org_id: str, email: str) -> Optional[User]:
-        """Get user by email"""
+        """Get user by email within an organization"""
         return db.query(User).filter(
             and_(User.org_id == org_id, User.email == email)
         ).first()
+
+    @staticmethod
+    def get_by_employee_id(db: Session, employee_id: str) -> Optional[User]:
+        """Get user by employee primary key"""
+        return db.query(User).filter(User.employee_id == employee_id).first()
     
     @staticmethod
     def get_by_email_any_org(db: Session, email: str) -> Optional[User]:
@@ -78,7 +97,7 @@ class UserRepository:
     def get_by_id(db: Session, user_id: str) -> Optional[User]:
         """Get user by ID"""
         return db.query(User).filter(User.id == user_id).first()
-    
+
     @staticmethod
     def list_org_users(db: Session, org_id: str, skip: int = 0, limit: int = 100) -> List[User]:
         """List organization users"""
@@ -91,6 +110,57 @@ class UserRepository:
         if user:
             user.last_login = datetime.utcnow()
             db.commit()
+
+    @staticmethod
+    def update_password(db: Session, user_id: str, password_hash: str):
+        """Update user's password and invalidate existing tokens"""
+        user = db.query(User).filter(User.id == user_id).first()
+        if user:
+            user.password_hash = password_hash
+            user.token_invalid_before = datetime.utcnow()
+            db.commit()
+            db.refresh(user)
+        return user
+
+# ============================================================================
+# AUDIT LOG REPOSITORY
+# ============================================================================
+
+class AuditLogRepository:
+    """Audit log database operations"""
+
+    @staticmethod
+    def create(
+        db: Session,
+        org_id: str,
+        action: str,
+        resource_type: str,
+        resource_id: str,
+        user_id: Optional[str] = None,
+        status: str = "success",
+        ip_address: Optional[str] = None,
+        user_agent: Optional[str] = None,
+        old_value: Optional[str] = None,
+        new_value: Optional[str] = None,
+        error_message: Optional[str] = None,
+    ):
+        audit_log = AuditLog(
+            org_id=org_id,
+            user_id=user_id,
+            action=action,
+            resource_type=resource_type,
+            resource_id=resource_id,
+            status=status,
+            ip_address=ip_address,
+            user_agent=user_agent,
+            old_value=old_value,
+            new_value=new_value,
+            error_message=error_message
+        )
+        db.add(audit_log)
+        db.commit()
+        db.refresh(audit_log)
+        return audit_log
 
 # ============================================================================
 # EMPLOYEE REPOSITORY
@@ -117,6 +187,16 @@ class EmployeeRepository:
     def get_by_id(db: Session, employee_id: str) -> Optional[Employee]:
         """Get employee by ID"""
         return db.query(Employee).filter(Employee.id == employee_id).first()
+    
+    @staticmethod
+    def get_by_user_id(db: Session, user_id: str) -> Optional[Employee]:
+        """Get employee record for a user"""
+        return db.query(Employee).join(User, Employee.id == User.employee_id).filter(
+            and_(
+                User.id == user_id,
+                Employee.org_id == User.org_id
+            )
+        ).first()
     
     @staticmethod
     def get_by_employee_id(db: Session, org_id: str, employee_id: str) -> Optional[Employee]:
@@ -332,6 +412,45 @@ class GeofenceRepository:
         return db.query(Geofence).filter(Geofence.id == geofence_id).first()
 
 # ============================================================================
+# AUDIT LOG REPOSITORY
+# ============================================================================
+
+class AuditLogRepository:
+    """Audit trail database operations"""
+
+    @staticmethod
+    def create(db: Session, org_id: str, user_id: str, action: str, resource_type: str,
+               resource_id: str, status: str = "success", old_value: str = None,
+               new_value: str = None, ip_address: str = None, user_agent: str = None,
+               error_message: str = None):
+        audit_log = AuditLog(
+            org_id=org_id,
+            user_id=user_id,
+            action=action,
+            resource_type=resource_type,
+            resource_id=resource_id,
+            status=status,
+            old_value=old_value,
+            new_value=new_value,
+            ip_address=ip_address,
+            user_agent=user_agent,
+            error_message=error_message
+        )
+        db.add(audit_log)
+        db.commit()
+        db.refresh(audit_log)
+        return audit_log
+
+    @staticmethod
+    def list_org_logs(db: Session, org_id: str, skip: int = 0, limit: int = 100):
+        return db.query(AuditLog).filter(AuditLog.org_id == org_id).order_by(desc(AuditLog.created_at)).offset(skip).limit(limit).all()
+    
+    @staticmethod
+    def get_by_id(db: Session, geofence_id: str) -> Optional[Geofence]:
+        """Get geofence by ID"""
+        return db.query(Geofence).filter(Geofence.id == geofence_id).first()
+
+# ============================================================================
 # PAYROLL REPOSITORY
 # ============================================================================
 
@@ -339,43 +458,15 @@ class PayrollRepository:
     """Payroll database operations"""
     
     @staticmethod
-    def create(
-        db: Session,
-        employee_id: str,
-        org_id: str,
-        period_start: datetime,
-        period_end: datetime,
-        daily_rate: float,
-        regular_hours: float = 0.0,
-        overtime_hours: float = 0.0,
-        regular_pay: float = 0.0,
-        overtime_pay: float = 0.0,
-        bonus_pay: float = 0.0,
-        total_pay: float = 0.0,
-        deductions: float = 0.0,
-        net_pay: float = 0.0,
-        payment_status: str = "pending",
-        payment_date: datetime | None = None,
-        notes: str | None = None,
-    ):
+    def create(db: Session, employee_id: str, org_id: str, period_start: datetime, 
+              period_end: datetime, daily_rate: float):
         """Create payroll record"""
         payroll = PayrollRecord(
             employee_id=employee_id,
             org_id=org_id,
             period_start=period_start,
             period_end=period_end,
-            daily_rate=daily_rate,
-            regular_hours=regular_hours,
-            overtime_hours=overtime_hours,
-            regular_pay=regular_pay,
-            overtime_pay=overtime_pay,
-            bonus_pay=bonus_pay,
-            total_pay=total_pay,
-            deductions=deductions,
-            net_pay=net_pay,
-            payment_status=payment_status,
-            payment_date=payment_date,
-            notes=notes,
+            daily_rate=daily_rate
         )
         db.add(payroll)
         db.commit()
@@ -393,217 +484,6 @@ class PayrollRepository:
                 PayrollRecord.period_end >= today
             )
         ).first()
-
-# ============================================================================
-# PAYMENT TRANSACTION REPOSITORY
-# ============================================================================
-
-class PaymentTransactionRepository:
-    """Payment transaction history database operations"""
-
-    @staticmethod
-    def create(
-        db: Session,
-        org_id: str,
-        employee_id: str,
-        payroll_record_id: str | None,
-        amount: float,
-        currency: str,
-        provider: str = "squad",
-        external_transaction_id: str | None = None,
-        status: str = "pending",
-        failure_reason: str | None = None,
-        provider_response: str | None = None,
-        provider_metadata: str | None = None,
-    ) -> PaymentTransaction:
-        transaction = PaymentTransaction(
-            org_id=org_id,
-            employee_id=employee_id,
-            payroll_record_id=payroll_record_id,
-            external_transaction_id=external_transaction_id,
-            provider=provider,
-            amount=amount,
-            currency=currency,
-            status=status,
-            failure_reason=failure_reason,
-            provider_response=provider_response,
-            provider_metadata=provider_metadata,
-        )
-        db.add(transaction)
-        db.commit()
-        db.refresh(transaction)
-        return transaction
-
-    @staticmethod
-    def get_by_id(db: Session, transaction_id: str) -> Optional[PaymentTransaction]:
-        return db.query(PaymentTransaction).filter(PaymentTransaction.id == transaction_id).first()
-
-    @staticmethod
-    def list_org_transactions(db: Session, org_id: str, skip: int = 0, limit: int = 50) -> List[PaymentTransaction]:
-        return db.query(PaymentTransaction).filter(
-            PaymentTransaction.org_id == org_id
-        ).order_by(desc(PaymentTransaction.created_at)).offset(skip).limit(limit).all()
-
-    @staticmethod
-    def update_status(
-        db: Session,
-        transaction_id: str,
-        status: str,
-        external_transaction_id: str | None = None,
-        failure_reason: str | None = None,
-        provider_response: str | None = None,
-        provider_metadata: str | None = None,
-    ) -> Optional[PaymentTransaction]:
-        transaction = db.query(PaymentTransaction).filter(PaymentTransaction.id == transaction_id).first()
-        if not transaction:
-            return None
-        transaction.status = status
-        if external_transaction_id is not None:
-            transaction.external_transaction_id = external_transaction_id
-        if failure_reason is not None:
-            transaction.failure_reason = failure_reason
-        if provider_response is not None:
-            transaction.provider_response = provider_response
-        if provider_metadata is not None:
-            transaction.provider_metadata = provider_metadata
-        transaction.updated_at = datetime.utcnow()
-        db.commit()
-        db.refresh(transaction)
-        return transaction
-
-# ============================================================================
-# SALARY DISBURSEMENT REPOSITORY
-# ============================================================================
-
-class SalaryDisbursementRepository:
-    """Salary disbursement database operations"""
-
-    @staticmethod
-    def create(
-        db: Session,
-        org_id: str,
-        employee_id: str,
-        payroll_record_id: str | None,
-        amount: float,
-        currency: str,
-        bank_name: str,
-        bank_account_mask: str,
-        account_holder_name: str,
-        description: str | None = None,
-        status: str = "pending",
-        failure_reason: str | None = None,
-    ) -> SalaryDisbursement:
-        disbursement = SalaryDisbursement(
-            org_id=org_id,
-            employee_id=employee_id,
-            payroll_record_id=payroll_record_id,
-            amount=amount,
-            currency=currency,
-            bank_name=bank_name,
-            bank_account_mask=bank_account_mask,
-            account_holder_name=account_holder_name,
-            description=description,
-            status=status,
-            failure_reason=failure_reason,
-        )
-        db.add(disbursement)
-        db.commit()
-        db.refresh(disbursement)
-        return disbursement
-
-    @staticmethod
-    def get_by_id(db: Session, disbursement_id: str) -> Optional[SalaryDisbursement]:
-        return db.query(SalaryDisbursement).filter(SalaryDisbursement.id == disbursement_id).first()
-
-    @staticmethod
-    def get_duplicate(
-        db: Session,
-        employee_id: str,
-        period_start: datetime,
-        period_end: datetime,
-    ) -> Optional[SalaryDisbursement]:
-        return db.query(SalaryDisbursement).join(PayrollRecord).filter(
-            and_(
-                SalaryDisbursement.employee_id == employee_id,
-                PayrollRecord.period_start == period_start,
-                PayrollRecord.period_end == period_end,
-                SalaryDisbursement.status.in_(["pending", "processing", "succeeded"])
-            )
-        ).first()
-
-    @staticmethod
-    def list_org_disbursements(db: Session, org_id: str, skip: int = 0, limit: int = 50) -> List[SalaryDisbursement]:
-        return db.query(SalaryDisbursement).filter(
-            SalaryDisbursement.org_id == org_id
-        ).order_by(desc(SalaryDisbursement.created_at)).offset(skip).limit(limit).all()
-
-    @staticmethod
-    def update_status(
-        db: Session,
-        disbursement_id: str,
-        status: str,
-        failure_reason: str | None = None,
-        completed_at: datetime | None = None,
-        transaction_id: str | None = None,
-    ) -> Optional[SalaryDisbursement]:
-        disbursement = db.query(SalaryDisbursement).filter(SalaryDisbursement.id == disbursement_id).first()
-        if not disbursement:
-            return None
-        disbursement.status = status
-        if failure_reason is not None:
-            disbursement.failure_reason = failure_reason
-        if completed_at is not None:
-            disbursement.completed_at = completed_at
-        if transaction_id is not None:
-            disbursement.transaction_id = transaction_id
-        disbursement.updated_at = datetime.utcnow()
-        db.commit()
-        db.refresh(disbursement)
-        return disbursement
-
-# ============================================================================
-# AUDIT LOG REPOSITORY
-# ============================================================================
-
-class AuditLogRepository:
-    """Audit log database operations"""
-
-    @staticmethod
-    def create(
-        db: Session,
-        org_id: str,
-        user_id: str | None,
-        action: str,
-        resource_type: str,
-        resource_id: str,
-        old_value: str | None = None,
-        new_value: str | None = None,
-        ip_address: str | None = None,
-        user_agent: str | None = None,
-        status: str = "success",
-        error_message: str | None = None,
-    ):
-        audit = AuditLog(
-            org_id=org_id,
-            user_id=user_id,
-            action=action,
-            resource_type=resource_type,
-            resource_id=resource_id,
-            old_value=old_value,
-            new_value=new_value,
-            ip_address=ip_address,
-            user_agent=user_agent,
-            status=status,
-            error_message=error_message,
-        )
-        db.add(audit)
-        db.commit()
-        db.refresh(audit)
-        return audit
-
-    @staticmethod
-    def list_org_logs(db: Session, org_id: str, skip: int = 0, limit: int = 100):
-        return db.query(AuditLog).filter(AuditLog.org_id == org_id).order_by(desc(AuditLog.created_at)).offset(skip).limit(limit).all()
 
 # ============================================================================
 # ANALYTICS REPOSITORY

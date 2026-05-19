@@ -96,7 +96,7 @@ void main() {
 
       // Look for demo credentials text
       expect(find.textContaining('admin@optiwork.ai'), findsOneWidget);
-      expect(find.textContaining('password123'), findsOneWidget);
+      expect(find.textContaining('admin_password'), findsOneWidget);
     });
 
     testWidgets('Email field has correct label', (WidgetTester tester) async {

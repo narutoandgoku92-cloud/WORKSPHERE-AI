@@ -20,6 +20,7 @@ from sqlalchemy.orm import Session
 from core.database import engine, SessionLocal, Base, init_db
 from core.security import hash_password
 from models import Organization, User, Employee, Department, Geofence
+from repositories import UserRepository
 import uuid
 
 # Default credentials
@@ -121,6 +122,32 @@ def seed_database():
             print(f"✅ Employee created with ID: {emp_employee.id}")
         else:
             print(f"ℹ️  Employee already exists: {emp_employee.email}")
+
+        # Ensure the default employee can also authenticate
+        employee_user = UserRepository.get_by_email(db, default_org.id, DEFAULT_EMPLOYEE_EMAIL)
+        if not employee_user:
+            print(f"🔐 Creating auth user for employee: {DEFAULT_EMPLOYEE_EMAIL}")
+            employee_user = User(
+                id=emp_employee.id,
+                org_id=default_org.id,
+                email=DEFAULT_EMPLOYEE_EMAIL,
+                password_hash=hash_password(DEFAULT_EMPLOYEE_PASSWORD),
+                full_name=DEFAULT_EMPLOYEE_NAME,
+                role="employee",
+                is_active=True
+            )
+            db.add(employee_user)
+            db.commit()
+            db.refresh(employee_user)
+            print(f"✅ Employee auth user created with ID: {employee_user.id}")
+        else:
+            if employee_user.id != emp_employee.id:
+                print(
+                    f"⚠️  Employee auth user already exists with a different ID: {employee_user.id}. "
+                    f"Existing employee record ID: {emp_employee.id}."
+                )
+            else:
+                print(f"ℹ️  Employee auth user already exists: {employee_user.email}")
         
         # Create a default geofence for testing
         geofence = db.query(Geofence).filter(

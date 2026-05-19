@@ -199,7 +199,7 @@ echo -e "\n${BLUE}=== BASIC FUNCTIONALITY TESTS ===${NC}"
 echo -e "\n${YELLOW}Testing Demo Login...${NC}"
 login_response=$(curl -s -X POST http://localhost:8000/api/v1/auth/login \
   -H "Content-Type: application/json" \
-  -d '{"email":"admin@optiwork.ai","password":"password123"}')
+  -d '{"email":"admin@optiwork.ai","password":"admin_password"}')
 
 if echo "$login_response" | grep -q "access_token"; then
     echo -e "${GREEN}✓${NC} Login returns access token"

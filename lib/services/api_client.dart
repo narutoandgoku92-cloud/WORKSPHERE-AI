@@ -1,157 +1,221 @@
-// lib/services/api_client.dart
+﻿// lib/services/api_client.dart
 
+import 'dart:async';
+import 'dart:developer';
+
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:dio/dio.dart';
-import 'package:hive_flutter/hive_flutter.dart';
-import 'package:flutter/foundation.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:internet_connection_checker/internet_connection_checker.dart';
+
 import '../config/app_config.dart';
 
 class ApiClient {
   static final String baseUrl = AppConfig.apiBaseUrl;
-  late Dio _dio;
-  late Box<String> _authBox;
+  final Dio _dio;
+  final FlutterSecureStorage _secureStorage = const FlutterSecureStorage();
+  bool _refreshing = false;
 
-  ApiClient() {
-    _dio = Dio(
-      BaseOptions(
-        baseUrl: baseUrl,
-        connectTimeout: const Duration(seconds: 30),
-        receiveTimeout: const Duration(seconds: 30),
-        contentType: Headers.jsonContentType,
-      ),
-    );
-
-    // Add logging interceptor for debugging (debug mode only)
-    if (kDebugMode) {
-      _dio.interceptors.add(LoggingInterceptor());
-    }
-
-    // Add authentication token interceptor
+  ApiClient()
+      : _dio = Dio(
+          BaseOptions(
+            baseUrl: baseUrl,
+            connectTimeout: AppConfig.apiTimeout,
+            receiveTimeout: AppConfig.apiTimeout,
+            sendTimeout: AppConfig.apiTimeout,
+            contentType: Headers.jsonContentType,
+            responseType: ResponseType.json,
+          ),
+        ) {
     _dio.interceptors.add(
       InterceptorsWrapper(
         onRequest: (options, handler) async {
-          try {
-            _authBox = await Hive.openBox<String>('auth');
-            final token = _authBox.get('access_token');
-            if (token != null) {
-              options.headers['Authorization'] = 'Bearer $token';
-              if (kDebugMode) print('[ApiClient] Authorization header added');
-            }
-          } catch (e) {
-            if (kDebugMode) print('[ApiClient] ❌ Error getting token: $e');
+          if (!await _hasNetworkConnection()) {
+            return handler.reject(
+              DioException(
+                requestOptions: options,
+                error: 'No network connection',
+                type: DioExceptionType.connectionError,
+              ),
+            );
           }
+
+          final accessToken = await _readToken(_accessTokenKey);
+          if (accessToken != null && accessToken.isNotEmpty) {
+            options.headers['Authorization'] = 'Bearer $accessToken';
+          }
+
           return handler.next(options);
         },
-        onError: (error, handler) {
-          if (kDebugMode) {
-            print('[ApiClient] ❌ DIO ERROR: ${error.type}');
-            print('[ApiClient] Message: ${error.message}');
-            print('[ApiClient] Status: ${error.response?.statusCode}');
+        onError: (error, handler) async {
+          final requestOptions = error.requestOptions;
+          final statusCode = error.response?.statusCode;
+
+          if (_isUnauthorized(statusCode) && !requestOptions.extra.containsKey('refresh_attempted')) {
+            try {
+              await _refreshTokens();
+              requestOptions.extra['refresh_attempted'] = true;
+              final response = await _retryRequest(requestOptions);
+              return handler.resolve(response);
+            } catch (e) {
+              await clearAuthTokens();
+            }
           }
+
+          if (_shouldRetry(error) && _retryCount(requestOptions) < AppConfig.maxRetryAttempts) {
+            final retryResponse = await _retryRequest(requestOptions);
+            return handler.resolve(retryResponse);
+          }
+
           return handler.next(error);
         },
       ),
     );
+  }
 
-    if (kDebugMode) {
-      print('[ApiClient] Initialized with base URL: $baseUrl');
+  static const String _accessTokenKey = 'access_token';
+  static const String _refreshTokenKey = 'refresh_token';
+
+  Future<bool> _hasNetworkConnection() async {
+    final connectivityResults = await Connectivity().checkConnectivity();
+    if (connectivityResults.isEmpty || connectivityResults.contains(ConnectivityResult.none)) {
+      return false;
+    }
+    return await InternetConnectionChecker().hasConnection;
+  }
+
+  bool _isUnauthorized(int? statusCode) {
+    return statusCode == 401 || statusCode == 403;
+  }
+
+  bool _shouldRetry(DioException error) {
+    return error.type == DioExceptionType.connectionTimeout ||
+        error.type == DioExceptionType.sendTimeout ||
+        error.type == DioExceptionType.receiveTimeout ||
+        error.type == DioExceptionType.connectionError;
+  }
+
+  int _retryCount(RequestOptions options) {
+    return (options.extra['retry_count'] as int?) ?? 0;
+  }
+
+  Future<String?> _readToken(String key) async {
+    try {
+      return await _secureStorage.read(key: key);
+    } catch (e) {
+      log('Secure storage read failed: $e', name: 'ApiClient');
+      return null;
+    }
+  }
+
+  Future<void> _writeToken(String key, String? value) async {
+    if (value == null) return;
+    try {
+      await _secureStorage.write(key: key, value: value);
+    } catch (e) {
+      log('Secure storage write failed: $e', name: 'ApiClient');
+    }
+  }
+
+  Future<void> setAuthTokens({required String accessToken, required String refreshToken}) async {
+    await _writeToken(_accessTokenKey, accessToken);
+    await _writeToken(_refreshTokenKey, refreshToken);
+  }
+
+  Future<void> clearAuthTokens() async {
+    try {
+      await _secureStorage.delete(key: _accessTokenKey);
+      await _secureStorage.delete(key: _refreshTokenKey);
+    } catch (e) {
+      log('Secure storage delete failed: $e', name: 'ApiClient');
+    }
+  }
+
+  Future<Response> _retryRequest(RequestOptions requestOptions) async {
+    final attempt = _retryCount(requestOptions) + 1;
+    final latestAccessToken = await _readToken(_accessTokenKey);
+    final headers = Map<String, dynamic>.from(requestOptions.headers);
+    if (latestAccessToken != null && latestAccessToken.isNotEmpty) {
+      headers['Authorization'] = 'Bearer $latestAccessToken';
+    }
+
+    final options = Options(
+      method: requestOptions.method,
+      headers: headers,
+      responseType: requestOptions.responseType,
+      contentType: requestOptions.contentType,
+      extra: {
+        ...requestOptions.extra,
+        'retry_count': attempt,
+      },
+      followRedirects: requestOptions.followRedirects,
+      validateStatus: requestOptions.validateStatus,
+    );
+
+    await Future<void>.delayed(Duration(milliseconds: AppConfig.retryBaseDelayMs * attempt));
+    return _dio.request(
+      requestOptions.path,
+      data: requestOptions.data,
+      queryParameters: requestOptions.queryParameters,
+      options: options,
+    );
+  }
+
+  Future<void> _refreshTokens() async {
+    if (_refreshing) return;
+    _refreshing = true;
+    try {
+      final refreshToken = await _readToken(_refreshTokenKey);
+      if (refreshToken == null || refreshToken.isEmpty) {
+        throw StateError('No refresh token available');
+      }
+
+      final response = await _dio.post(
+        '/auth/refresh',
+        data: {'refresh_token': refreshToken},
+      );
+
+      final accessToken = response.data['access_token'] as String?;
+      final newRefreshToken = response.data['refresh_token'] as String?;
+      if (accessToken == null || newRefreshToken == null) {
+        throw StateError('Refresh response did not contain tokens');
+      }
+
+      await setAuthTokens(accessToken: accessToken, refreshToken: newRefreshToken);
+    } finally {
+      _refreshing = false;
     }
   }
 
   Future<Response> post(
     String path, {
-    required Map<String, dynamic> data,
+    Map<String, dynamic>? data,
     Map<String, dynamic>? queryParameters,
+    Options? options,
   }) async {
-    return await _dio.post(
-      path,
-      data: data,
-      queryParameters: queryParameters,
-    );
+    return _dio.post(path, data: data, queryParameters: queryParameters, options: options);
   }
 
   Future<Response> get(
     String path, {
     Map<String, dynamic>? queryParameters,
+    Options? options,
   }) async {
-    return await _dio.get(
-      path,
-      queryParameters: queryParameters,
-    );
+    return _dio.get(path, queryParameters: queryParameters, options: options);
   }
 
   Future<Response> put(
     String path, {
-    required Map<String, dynamic> data,
+    Map<String, dynamic>? data,
+    Options? options,
   }) async {
-    return await _dio.put(path, data: data);
+    return _dio.put(path, data: data, options: options);
   }
 
-  Future<Response> delete(String path) async {
-    return await _dio.delete(path);
-  }
-
-  void setAuthToken(String token) async {
-    try {
-      _authBox = await Hive.openBox<String>('auth');
-      await _authBox.put('access_token', token);
-      if (kDebugMode) print('[ApiClient] ✓ Token saved');
-    } catch (e) {
-      if (kDebugMode) print('[ApiClient] ❌ Error saving token: $e');
-    }
-  }
-
-  Future<void> clearAuthToken() async {
-    try {
-      _authBox = await Hive.openBox<String>('auth');
-      await _authBox.delete('access_token');
-      if (kDebugMode) print('[ApiClient] ✓ Token cleared');
-    } catch (e) {
-      if (kDebugMode) print('[ApiClient] ❌ Error clearing token: $e');
-    }
-  }
-}
-
-// ============================================================================
-// LOGGING INTERCEPTOR FOR DEBUGGING
-// ============================================================================
-
-class LoggingInterceptor extends Interceptor {
-  @override
-  void onRequest(RequestOptions options, RequestInterceptorHandler handler) {
-    print('\\n═══════════════════════════════════════════════════════════');
-    print('📤 REQUEST');
-    print('URI: ${options.uri}');
-    print('Method: ${options.method}');
-    print('Headers: ${options.headers}');
-    if (options.data != null) {
-      print('Body: ${options.data}');
-    }
-    print('═══════════════════════════════════════════════════════════\\n');
-    handler.next(options);
-  }
-
-  @override
-  void onResponse(Response response, ResponseInterceptorHandler handler) {
-    print('\\n═══════════════════════════════════════════════════════════');
-    print('📥 RESPONSE');
-    print('URI: ${response.requestOptions.uri}');
-    print('Status: ${response.statusCode}');
-    print('Headers: ${response.headers}');
-    print('Body: ${response.data}');
-    print('═══════════════════════════════════════════════════════════\\n');
-    handler.next(response);
-  }
-
-  @override
-  void onError(DioException err, ErrorInterceptorHandler handler) {
-    print('\\n═══════════════════════════════════════════════════════════');
-    print('❌ ERROR');
-    print('URI: ${err.requestOptions.uri}');
-    print('Error Type: ${err.type}');
-    print('Message: ${err.message}');
-    print('Status: ${err.response?.statusCode}');
-    print('Response: ${err.response?.data}');
-    print('═══════════════════════════════════════════════════════════\\n');
-    handler.next(err);
+  Future<Response> delete(
+    String path, {
+    Options? options,
+  }) async {
+    return _dio.delete(path, options: options);
   }
 }

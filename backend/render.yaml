@@ -1,0 +1,39 @@
+services:
+  - type: web
+    name: optiwork-ai-backend
+    env: python
+    region: oregon
+    branch: main
+    plan: starter
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn -k uvicorn.workers.UvicornWorker main:app --bind 0.0.0.0:$PORT --workers 2 --threads 4
+    healthCheckPath: /health/ready
+    envVars:
+      - key: ENVIRONMENT
+        value: production
+      - key: DATABASE_URL
+        value: ""
+      - key: SECRET_KEY
+        value: ""
+      - key: REDIS_URL
+        value: ""
+      - key: CORS_ORIGINS
+        value: ""
+      - key: ALLOWED_HOSTS
+        value: ""
+      - key: SENTRY_DSN
+        value: ""
+      - key: ACCESS_TOKEN_EXPIRE_MINUTES
+        value: "15"
+      - key: REFRESH_TOKEN_EXPIRE_DAYS
+        value: "7"
+      - key: RATE_LIMIT_ENABLED
+        value: "true"
+      - key: RATE_LIMIT_AUTH_PER_MINUTE
+        value: "30"
+      - key: RATE_LIMIT_PUBLIC_PER_MINUTE
+        value: "120"
+      - key: LOGIN_MAX_FAILED_ATTEMPTS
+        value: "5"
+      - key: LOGIN_LOCKOUT_SECONDS
+        value: "3600"

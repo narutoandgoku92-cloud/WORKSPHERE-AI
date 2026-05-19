@@ -41,7 +41,7 @@ def admin_credentials():
     """Admin test credentials"""
     return {
         "email": "admin@optiwork.ai",
-        "password": "password123"
+        "password": "admin_password"
     }
 
 # ============================================================================

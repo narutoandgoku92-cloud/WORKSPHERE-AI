@@ -12,14 +12,8 @@ import 'screens/face_recognition_screen.dart';
 import 'screens/gps_verification_screen.dart';
 import 'screens/profile_screen.dart';
 import 'screens/settings_screen.dart';
-import 'screens/payroll_dashboard_screen.dart';
-import 'screens/payroll_employee_list_screen.dart';
-import 'screens/payroll_bulk_payout_screen.dart';
-import 'screens/payroll_transactions_screen.dart';
 import 'providers/auth_provider.dart';
 import 'providers/profile_provider.dart';
-import 'providers/payroll_provider.dart';
-import 'theme/theme.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -33,6 +27,9 @@ class MyApp extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final authState = ref.watch(authProvider);
+    final themeSeed = const Color(0xFF5B37FF);
+    final lightColorScheme = ColorScheme.fromSeed(seedColor: themeSeed, brightness: Brightness.light);
+    final darkColorScheme = ColorScheme.fromSeed(seedColor: themeSeed, brightness: Brightness.dark);
 
     final router = GoRouter(
       initialLocation: '/',
@@ -86,22 +83,6 @@ class MyApp extends ConsumerWidget {
           },
         ),
         GoRoute(
-          path: '/payroll',
-          builder: (context, state) => const PayrollDashboardScreen(),
-        ),
-        GoRoute(
-          path: '/payroll/employees',
-          builder: (context, state) => const PayrollEmployeeListScreen(),
-        ),
-        GoRoute(
-          path: '/payroll/bulk',
-          builder: (context, state) => const PayrollBulkPayoutScreen(),
-        ),
-        GoRoute(
-          path: '/payroll/transactions',
-          builder: (context, state) => const PayrollTransactionsScreen(),
-        ),
-        GoRoute(
           path: '/profile',
           builder: (context, state) => const ProfileScreen(),
         ),
@@ -117,8 +98,134 @@ class MyApp extends ConsumerWidget {
       routerConfig: router,
       title: 'WorkSphere AI',
       themeMode: ThemeMode.system,
-      theme: AppTheme.lightTheme,
-      darkTheme: AppTheme.darkTheme,
+      theme: ThemeData(
+        useMaterial3: true,
+        colorScheme: lightColorScheme,
+        scaffoldBackgroundColor: const Color(0xFFF5F6FF),
+        appBarTheme: AppBarTheme(
+          backgroundColor: lightColorScheme.primary,
+          foregroundColor: lightColorScheme.onPrimary,
+          elevation: 0,
+          centerTitle: true,
+          iconTheme: IconThemeData(color: lightColorScheme.onPrimary),
+          titleTextStyle: TextStyle(
+            color: lightColorScheme.onPrimary,
+            fontSize: 20,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        cardTheme: CardThemeData(
+          color: Colors.white,
+          elevation: 4,
+          margin: const EdgeInsets.symmetric(vertical: 10, horizontal: 16),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        ),
+        elevatedButtonTheme: ElevatedButtonThemeData(
+          style: ElevatedButton.styleFrom(
+            backgroundColor: lightColorScheme.primary,
+            foregroundColor: lightColorScheme.onPrimary,
+            elevation: 3,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            minimumSize: const Size(double.infinity, 52),
+            textStyle: const TextStyle(fontWeight: FontWeight.w700),
+          ),
+        ),
+        outlinedButtonTheme: OutlinedButtonThemeData(
+          style: OutlinedButton.styleFrom(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            side: BorderSide(color: lightColorScheme.primary.withOpacity(0.85)),
+            foregroundColor: lightColorScheme.primary,
+          ),
+        ),
+        inputDecorationTheme: InputDecorationTheme(
+          filled: true,
+          fillColor: Colors.white,
+          contentPadding: const EdgeInsets.symmetric(vertical: 18, horizontal: 20),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(16),
+            borderSide: BorderSide.none,
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(16),
+            borderSide: BorderSide(color: Colors.grey.shade300),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(16),
+            borderSide: BorderSide(color: lightColorScheme.primary, width: 2),
+          ),
+          hintStyle: TextStyle(color: Colors.grey.shade500),
+        ),
+        snackBarTheme: SnackBarThemeData(
+          backgroundColor: lightColorScheme.primary,
+          contentTextStyle: TextStyle(color: lightColorScheme.onPrimary),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        ),
+        dividerTheme: DividerThemeData(color: Colors.grey.shade300, thickness: 1),
+      ),
+      darkTheme: ThemeData(
+        useMaterial3: true,
+        colorScheme: darkColorScheme,
+        scaffoldBackgroundColor: const Color(0xFF10101A),
+        appBarTheme: AppBarTheme(
+          backgroundColor: darkColorScheme.surfaceContainerHighest,
+          foregroundColor: darkColorScheme.onSurface,
+          elevation: 0,
+          centerTitle: true,
+          iconTheme: IconThemeData(color: darkColorScheme.onSurface),
+          titleTextStyle: TextStyle(
+            color: darkColorScheme.onSurface,
+            fontSize: 20,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        cardTheme: CardThemeData(
+          color: const Color(0xFF151625),
+          elevation: 4,
+          margin: const EdgeInsets.symmetric(vertical: 10, horizontal: 16),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        ),
+        elevatedButtonTheme: ElevatedButtonThemeData(
+          style: ElevatedButton.styleFrom(
+            backgroundColor: darkColorScheme.primary,
+            foregroundColor: darkColorScheme.onPrimary,
+            elevation: 3,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            minimumSize: const Size(double.infinity, 52),
+            textStyle: const TextStyle(fontWeight: FontWeight.w700),
+          ),
+        ),
+        outlinedButtonTheme: OutlinedButtonThemeData(
+          style: OutlinedButton.styleFrom(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            side: BorderSide(color: darkColorScheme.primary.withOpacity(0.85)),
+            foregroundColor: darkColorScheme.onPrimary,
+          ),
+        ),
+        inputDecorationTheme: InputDecorationTheme(
+          filled: true,
+          fillColor: const Color(0xFF14141F),
+          contentPadding: const EdgeInsets.symmetric(vertical: 18, horizontal: 20),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(16),
+            borderSide: BorderSide.none,
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(16),
+            borderSide: BorderSide(color: Colors.grey.shade800),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(16),
+            borderSide: BorderSide(color: darkColorScheme.primary, width: 2),
+          ),
+          hintStyle: TextStyle(color: Colors.grey.shade500),
+        ),
+        snackBarTheme: SnackBarThemeData(
+          backgroundColor: darkColorScheme.primary,
+          contentTextStyle: TextStyle(color: darkColorScheme.onPrimary),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        ),
+        dividerTheme: DividerThemeData(color: Colors.grey.shade800, thickness: 1),
+      ),
     );
   }
 }

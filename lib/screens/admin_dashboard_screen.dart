@@ -118,7 +118,7 @@ class AdminDashboardScreen extends ConsumerWidget {
                 'Quick Actions',
                 style: Theme.of(context).textTheme.titleMedium?.copyWith(
                   fontWeight: FontWeight.bold,
-                ),
+                ),  
               ),
               const SizedBox(height: 12),
 
@@ -131,23 +131,15 @@ class AdminDashboardScreen extends ConsumerWidget {
                 ),
               ),
               const SizedBox(height: 12),
+
               ElevatedButton.icon(
-                onPressed: () => context.go('/payroll'),
-                icon: const Icon(Icons.payments),
-                label: const Text('Payroll Center'),
+                onPressed: () {},
+                icon: const Icon(Icons.person),
+                label: const Text('Add Employee'),
                 style: ElevatedButton.styleFrom(
-                  minimumSize: const Size.fromHeight(48),
-                ),
-              ),
-              const SizedBox(height: 12),
-              ElevatedButton.icon(
-                onPressed: () => context.go('/payroll/transactions'),
-                icon: const Icon(Icons.history),
-                label: const Text('Payroll Transactions'),
-                style: ElevatedButton.styleFrom(
-                  minimumSize: const Size.fromHeight(48),
-                ),
-              ),
+                  minimumSize: const Size.fromHeight(65),
+
+                 ),)
             ],
           ),
         ),

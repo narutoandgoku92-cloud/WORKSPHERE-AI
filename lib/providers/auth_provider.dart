@@ -2,7 +2,6 @@
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hive_flutter/hive_flutter.dart';
-import 'package:dio/dio.dart';
 import '../models/user_model.dart';
 import '../services/api_client.dart';
 
@@ -64,15 +63,11 @@ class AuthNotifier extends StateNotifier<AuthState> {
   Future<bool> login(String email, String password) async {
     state = state.copyWith(isLoading: true, error: null);
     try {
-      print('[AuthNotifier] 🔐 Login attempt for $email');
-      
       final response = await apiClient.post(
         '/auth/login',
         data: {'email': email, 'password': password},
       );
 
-      print('[AuthNotifier] ✓ Login successful, status: ${response.statusCode}');
-      
       final data = LoginResponse.fromJson(response.data);
       
       apiClient.setAuthToken(data.accessToken);
@@ -88,35 +83,8 @@ class AuthNotifier extends StateNotifier<AuthState> {
         error: null,
       );
 
-      print('[AuthNotifier] ✓ User authenticated: ${data.user.email}');
       return true;
-    } on DioException catch (e) {
-      print('[AuthNotifier] ❌ Login failed (Dio error)');
-      print('[AuthNotifier] Error type: ${e.type}');
-      print('[AuthNotifier] Status code: ${e.response?.statusCode}');
-      print('[AuthNotifier] Message: ${e.message}');
-      print('[AuthNotifier] Response: ${e.response?.data}');
-      
-      String errorMsg = 'Login failed';
-      if (e.type == DioExceptionType.connectionTimeout) {
-        errorMsg = 'Connection timeout - check your API URL and network connection';
-      } else if (e.type == DioExceptionType.unknown && e.message?.contains('SocketException') == true) {
-        errorMsg = 'Network error - cannot reach backend server';
-      } else if (e.response?.statusCode == 401) {
-        errorMsg = 'Invalid credentials';
-      } else if (e.response?.statusCode == 403) {
-        errorMsg = 'User account is disabled';
-      } else {
-        errorMsg = e.response?.data['detail'] ?? e.message ?? errorMsg;
-      }
-      
-      state = state.copyWith(
-        isLoading: false,
-        error: errorMsg,
-      );
-      return false;
     } catch (e) {
-      print('[AuthNotifier] ❌ Login failed (unexpected error): ${e.toString()}');
       state = state.copyWith(
         isLoading: false,
         error: 'Login failed: ${e.toString()}',

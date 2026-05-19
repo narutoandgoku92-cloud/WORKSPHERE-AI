@@ -29,8 +29,8 @@ async def enroll_face(
 ):
     """Enroll employee face for recognition"""
     
-    # Get employee
-    employee = EmployeeRepository.get_by_id(db, current_user.id)
+    # Get employee for current authenticated user
+    employee = EmployeeRepository.get_by_user_id(db, current_user.id)
     if not employee:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -83,8 +83,8 @@ async def verify_face(
 ):
     """Verify face for check-in"""
     
-    # Get employee
-    employee = EmployeeRepository.get_by_id(db, current_user.id)
+    # Get employee for current authenticated user
+    employee = EmployeeRepository.get_by_user_id(db, current_user.id)
     if not employee:
         raise HTTPException(status_code=404, detail="Employee not found")
 

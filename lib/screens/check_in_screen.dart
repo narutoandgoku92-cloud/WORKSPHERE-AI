@@ -7,7 +7,7 @@ import 'package:geolocator/geolocator.dart';
 import '../providers/attendance_provider.dart';
 
 class CheckInScreen extends ConsumerStatefulWidget {
-  const CheckInScreen({Key? key}) : super(key: key);
+  const CheckInScreen({super.key});
 
   @override
   ConsumerState<CheckInScreen> createState() => _CheckInScreenState();
@@ -17,6 +17,7 @@ class _CheckInScreenState extends ConsumerState<CheckInScreen> {
   bool _isLoading = false;
   String _locationStatus = 'Getting location...';
   Position? _currentPosition;
+  bool _showOpenAppSettings = false;
 
   @override
   void initState() {
@@ -24,60 +25,76 @@ class _CheckInScreenState extends ConsumerState<CheckInScreen> {
     _getLocation();
   }
 
+  void _safeSetState(VoidCallback callback) {
+    if (!mounted) return;
+    setState(callback);
+  }
+
   Future<void> _getLocation() async {
+    _safeSetState(() => _locationStatus = 'Checking location permissions...');
+
     try {
       final serviceEnabled = await Geolocator.isLocationServiceEnabled();
       if (!serviceEnabled) {
-        setState(() => _locationStatus = 'Location services are disabled. Please enable them.');
+        _safeSetState(() => _locationStatus = 'Location services are disabled. Please enable GPS.');
         return;
       }
 
       LocationPermission permission = await Geolocator.checkPermission();
-      if (permission == LocationPermission.denied ||
-          permission == LocationPermission.deniedForever) {
+      if (permission == LocationPermission.denied) {
         permission = await Geolocator.requestPermission();
       }
 
       if (permission == LocationPermission.denied) {
-        setState(() => _locationStatus = 'Location permission denied');
+        _safeSetState(() {
+          _locationStatus = 'Location permission denied. Please grant permission.';
+          _showOpenAppSettings = false;
+        });
         return;
       }
+
       if (permission == LocationPermission.deniedForever) {
-        setState(() => _locationStatus = 'Location permission permanently denied. Enable it in settings.');
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text('Location permission permanently denied.'),
-            action: SnackBarAction(
-              label: 'Settings',
-              onPressed: () => Geolocator.openAppSettings(),
-            ),
-          ),
-        );
+        _safeSetState(() {
+          _locationStatus = 'Location permission permanently denied. Enable it in app settings.';
+          _showOpenAppSettings = true;
+        });
         return;
       }
 
       final position = await Geolocator.getCurrentPosition(
         desiredAccuracy: LocationAccuracy.high,
+        timeLimit: const Duration(seconds: 15),
       );
 
-      setState(() {
+      _safeSetState(() {
         _currentPosition = position;
         _locationStatus = 'Location: ${position.latitude}, ${position.longitude}';
+        _showOpenAppSettings = false;
       });
     } catch (e) {
-      setState(() => _locationStatus = 'Location error: $e');
+      _safeSetState(() => _locationStatus = 'Location error: $e');
+    }
+  }
+
+  Future<void> _openAppSettings() async {
+    final opened = await Geolocator.openAppSettings();
+    if (!opened && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Unable to open app settings. Please enable location permission manually.')),
+      );
     }
   }
 
   Future<void> _handleCheckIn() async {
     if (_currentPosition == null) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Please enable location services')),
       );
       return;
     }
 
-    setState(() => _isLoading = true);
+    _safeSetState(() => _isLoading = true);
 
     final attendanceNotifier = ref.read(attendanceProvider.notifier);
     final success = await attendanceNotifier.checkIn(
@@ -85,13 +102,15 @@ class _CheckInScreenState extends ConsumerState<CheckInScreen> {
       _currentPosition!.longitude,
     );
 
-    setState(() => _isLoading = false);
+    if (!mounted) return;
+    _safeSetState(() => _isLoading = false);
 
     if (success) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Checked in successfully!')),
       );
       Future.delayed(const Duration(seconds: 2), () {
+        if (!mounted) return;
         context.go('/dashboard');
       });
     } else {
@@ -178,6 +197,18 @@ class _CheckInScreenState extends ConsumerState<CheckInScreen> {
                     disabledBackgroundColor: Colors.grey[400],
                   ),
                 ),
+
+                if (_showOpenAppSettings) ...[
+                  const SizedBox(height: 16),
+                  OutlinedButton.icon(
+                    onPressed: _openAppSettings,
+                    icon: const Icon(Icons.settings),
+                    label: const Text('Open App Settings'),
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                    ),
+                  ),
+                ],
 
                 const SizedBox(height: 16),
                 

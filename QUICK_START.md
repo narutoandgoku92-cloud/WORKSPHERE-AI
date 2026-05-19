@@ -45,7 +45,7 @@ open http://localhost:8000/api/docs
 # Login as admin
 curl -X POST http://localhost:8000/api/v1/auth/login \
   -H "Content-Type: application/json" \
-  -d '{"email":"admin@optiwork.ai","password":"password123"}'
+  -d '{"email":"admin@optiwork.ai","password":"admin_password"}'
 ```
 
 ### 4. Run Flutter App
@@ -58,7 +58,7 @@ flutter run     # Run on connected device or emulator
 
 **Demo Credentials:**
 - Email: `admin@optiwork.ai`
-- Password: `password123`
+- Password: `admin_password`
 
 ---
 

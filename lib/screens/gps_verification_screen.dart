@@ -7,7 +7,7 @@ import 'package:geolocator/geolocator.dart';
 import '../providers/auth_provider.dart';
 
 class GpsVerificationScreen extends ConsumerStatefulWidget {
-  const GpsVerificationScreen({Key? key}) : super(key: key);
+  const GpsVerificationScreen({super.key});
 
   @override
   ConsumerState<GpsVerificationScreen> createState() => _GpsVerificationScreenState();
@@ -18,6 +18,8 @@ class _GpsVerificationScreenState extends ConsumerState<GpsVerificationScreen> {
   String _status = 'Initializing GPS verification...';
   Position? _currentPosition;
   bool _isLocationVerified = false;
+  bool _showOpenLocationSettings = false;
+  bool _showOpenAppSettings = false;
 
   @override
   void initState() {
@@ -25,66 +27,94 @@ class _GpsVerificationScreenState extends ConsumerState<GpsVerificationScreen> {
     _initializeLocation();
   }
 
+  void _safeSetState(VoidCallback callback) {
+    if (!mounted) return;
+    setState(callback);
+  }
+
   Future<void> _initializeLocation() async {
-    setState(() => _status = 'Checking location permissions...');
+    _safeSetState(() {
+      _isLoading = true;
+      _status = 'Checking location permissions...';
+      _showOpenLocationSettings = false;
+      _showOpenAppSettings = false;
+    });
 
     try {
       final serviceEnabled = await Geolocator.isLocationServiceEnabled();
       if (!serviceEnabled) {
-        setState(() => _status = 'Location services are disabled. Please enable them.');
+        _safeSetState(() {
+          _status = 'Location services are disabled. Please enable GPS and retry.';
+          _isLoading = false;
+          _showOpenLocationSettings = true;
+        });
         return;
       }
 
       LocationPermission permission = await Geolocator.checkPermission();
-      if (permission == LocationPermission.denied ||
-          permission == LocationPermission.deniedForever) {
+      if (permission == LocationPermission.denied) {
         permission = await Geolocator.requestPermission();
       }
 
       if (permission == LocationPermission.denied) {
-        setState(() => _status = 'Location permission denied');
+        _safeSetState(() {
+          _status = 'Location permission denied. Please allow location access.';
+          _isLoading = false;
+        });
         return;
       }
+
       if (permission == LocationPermission.deniedForever) {
-        setState(() => _status = 'Location permission permanently denied. Please enable in settings.');
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text('Location permission permanently denied.'),
-            action: SnackBarAction(
-              label: 'Settings',
-              onPressed: () => Geolocator.openAppSettings(),
-            ),
-          ),
-        );
+        _safeSetState(() {
+          _status = 'Location permission permanently denied. Enable it in app settings.';
+          _isLoading = false;
+          _showOpenAppSettings = true;
+        });
         return;
       }
 
-      setState(() => _status = 'Getting current location...');
+      _safeSetState(() => _status = 'Getting current location...');
 
-      // Get current position
       final position = await Geolocator.getCurrentPosition(
         desiredAccuracy: LocationAccuracy.high,
-        timeLimit: const Duration(seconds: 10),
+        timeLimit: const Duration(seconds: 15),
       );
 
-      setState(() {
+      _safeSetState(() {
         _currentPosition = position;
         _status = 'Location obtained: ${position.latitude.toStringAsFixed(6)}, ${position.longitude.toStringAsFixed(6)}';
       });
 
-      // Verify location (simulate office location check)
       await _verifyLocation(position);
-
     } catch (e) {
-      setState(() => _status = 'Error getting location: $e');
+      _safeSetState(() => _status = 'Error getting location: $e');
+    } finally {
+      _safeSetState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _openLocationSettings() async {
+    final opened = await Geolocator.openLocationSettings();
+    if (!opened && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Unable to open location settings. Please enable GPS manually.')),
+      );
+    }
+  }
+
+  Future<void> _openAppSettings() async {
+    final opened = await Geolocator.openAppSettings();
+    if (!opened && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Unable to open app settings. Please enable location permission manually.')),
+      );
     }
   }
 
   Future<void> _verifyLocation(Position position) async {
-    setState(() => _status = 'Verifying location...');
+    _safeSetState(() => _status = 'Verifying location...');
 
     try {
-      // Call GPS validation API
       final apiClient = ref.read(apiClientProvider);
       final response = await apiClient.post(
         '/gps/validate',
@@ -95,22 +125,23 @@ class _GpsVerificationScreenState extends ConsumerState<GpsVerificationScreen> {
       );
 
       final result = response.data;
-      final isInside = result['is_inside'] ?? false;
-      final distance = (result['distance_meters'] ?? 0.0).toDouble();
+      final bool isInside = result['is_inside'] ?? false;
+      final double distance = (result['distance_meters'] ?? 0.0).toDouble();
 
       if (isInside) {
-        setState(() {
+        _safeSetState(() {
           _isLocationVerified = true;
           _status = '✅ Location verified! You are within office premises.';
         });
       } else {
-        setState(() {
+        _safeSetState(() {
           _isLocationVerified = false;
           _status = '❌ Location verification failed. You are ${distance.toInt()}m away from office.';
         });
       }
     } catch (e) {
-      setState(() => _status = 'Location verification error: $e');
+      _safeSetState(() => _status = 'Location verification error: $e');
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('GPS verification failed: $e')),
       );
@@ -118,7 +149,7 @@ class _GpsVerificationScreenState extends ConsumerState<GpsVerificationScreen> {
   }
 
   Future<void> _retryVerification() async {
-    setState(() {
+    _safeSetState(() {
       _isLocationVerified = false;
       _status = 'Retrying location verification...';
     });
@@ -178,6 +209,29 @@ class _GpsVerificationScreenState extends ConsumerState<GpsVerificationScreen> {
               ),
               const SizedBox(height: 32),
 
+              if (_showOpenLocationSettings || _showOpenAppSettings) ...[
+                Wrap(
+                  spacing: 12,
+                  runSpacing: 12,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    if (_showOpenLocationSettings)
+                      ElevatedButton.icon(
+                        onPressed: _openLocationSettings,
+                        icon: const Icon(Icons.location_on),
+                        label: const Text('Open Location Settings'),
+                      ),
+                    if (_showOpenAppSettings)
+                      OutlinedButton.icon(
+                        onPressed: _openAppSettings,
+                        icon: const Icon(Icons.settings),
+                        label: const Text('Open App Settings'),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 24),
+              ],
+
               // Location Info Card
               if (_currentPosition != null) ...[
                 Card(
@@ -231,10 +285,10 @@ class _GpsVerificationScreenState extends ConsumerState<GpsVerificationScreen> {
                 const SizedBox(height: 16),
                 OutlinedButton(
                   onPressed: () => context.go('/dashboard'),
-                  child: const Text('Skip for Now'),
                   style: OutlinedButton.styleFrom(
                     minimumSize: const Size(double.infinity, 48),
                   ),
+                  child: const Text('Skip for Now'),
                 ),
               ] else ...[
                 ElevatedButton.icon(

@@ -27,8 +27,8 @@ async def check_in(
 ):
     """Employee check-in"""
     
-    # Get employee
-    employee = EmployeeRepository.get_by_id(db, current_user.id)
+    # Get employee for current authenticated user
+    employee = EmployeeRepository.get_by_user_id(db, current_user.id)
     if not employee:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -80,8 +80,8 @@ async def check_out(
 ):
     """Employee check-out"""
     
-    # Get employee
-    employee = EmployeeRepository.get_by_id(db, current_user.id)
+    # Get employee for current authenticated user
+    employee = EmployeeRepository.get_by_user_id(db, current_user.id)
     if not employee:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -98,10 +98,6 @@ async def check_out(
     
     # Create check-out
     attendance.check_out_time = datetime.utcnow()
-    if request.latitude and request.longitude:
-        attendance.check_out_latitude = request.latitude
-        attendance.check_out_longitude = request.longitude
-    
     db.commit()
     db.refresh(attendance)
     

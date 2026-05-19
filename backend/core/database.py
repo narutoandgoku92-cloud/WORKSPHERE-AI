@@ -1,6 +1,6 @@
 # backend/core/database.py - Database setup and session management
 
-from sqlalchemy import create_engine, event
+from sqlalchemy import create_engine, event, text
 from sqlalchemy.orm import sessionmaker, declarative_base, Session
 from sqlalchemy.pool import QueuePool
 from typing import Generator
@@ -14,20 +14,17 @@ logger = logging.getLogger(__name__)
 # DATABASE CONFIGURATION
 # ============================================================================
 
-# Determine if using SQLite
-is_sqlite = "sqlite" in settings.DATABASE_URL.lower()
+is_sqlite = settings.DATABASE_URL.startswith("sqlite")
 
-# Create engine with connection pooling
 if is_sqlite:
-    # SQLite doesn't support connection pooling or these options
     engine = create_engine(
         settings.DATABASE_URL,
         echo=settings.DATABASE_ECHO,
         connect_args={"check_same_thread": False},
-        pool_pre_ping=True
+        pool_pre_ping=True,
+        future=True
     )
 else:
-    # PostgreSQL configuration
     engine = create_engine(
         settings.DATABASE_URL,
         echo=settings.DATABASE_ECHO,
@@ -35,21 +32,22 @@ else:
         pool_size=settings.DATABASE_POOL_SIZE,
         max_overflow=settings.DATABASE_MAX_OVERFLOW,
         pool_timeout=settings.DATABASE_POOL_TIMEOUT,
-        pool_pre_ping=True,  # Test connections before using them
+        pool_pre_ping=True,
         connect_args={
             "connect_timeout": 10,
             "options": "-c statement_timeout=30000"
-        }
+        },
+        future=True
     )
 
-# Session factory
 SessionLocal = sessionmaker(
     autocommit=False,
     autoflush=False,
-    bind=engine
+    bind=engine,
+    expire_on_commit=False,
+    future=True
 )
 
-# Base class for all models
 Base = declarative_base()
 
 # ============================================================================
@@ -57,19 +55,11 @@ Base = declarative_base()
 # ============================================================================
 
 @event.listens_for(engine, "connect")
-def receive_connect(dbapi_conn, connection_record):
-    """Enable foreign keys on SQLite"""
-    if "sqlite" in settings.DATABASE_URL.lower():
+def enable_sqlite_foreign_keys(dbapi_conn, connection_record):
+    if is_sqlite:
         cursor = dbapi_conn.cursor()
         cursor.execute("PRAGMA foreign_keys=ON")
         cursor.close()
-
-# Commented out invalid event listener for SQLAlchemy 2.0 compatibility
-# @event.listens_for(engine, "pool_connect")
-# def receive_pool_connect(dbapi_conn, connection_record):
-#     """Log pool connections in debug mode"""
-#     if settings.DEBUG:
-#         logger.debug("Database pool connection established")
 
 # ============================================================================
 # DEPENDENCY INJECTION
@@ -88,29 +78,27 @@ def get_db() -> Generator[Session, None, None]:
 # ============================================================================
 
 def init_db():
-    """Initialize database tables and extensions"""
+    """Initialize database tables and PostgreSQL extensions"""
     try:
-        # Create all tables
         Base.metadata.create_all(bind=engine)
         logger.info("Database tables created successfully")
-        
-        # Enable PostgreSQL extensions if using PostgreSQL
-        if "postgresql" in settings.DATABASE_URL.lower():
-            from sqlalchemy import text
+
+        if not is_sqlite:
             with engine.connect() as conn:
-                conn.execute(text("CREATE EXTENSION IF NOT EXISTS \"uuid-ossp\";"))
-                conn.execute(text("CREATE EXTENSION IF NOT EXISTS \"pgvector\";"))
-                conn.execute(text("CREATE EXTENSION IF NOT EXISTS \"pg_trgm\";"))
+                conn.execute(text('CREATE EXTENSION IF NOT EXISTS "uuid-ossp";'))
+                conn.execute(text('CREATE EXTENSION IF NOT EXISTS "pg_trgm";'))
                 conn.commit()
                 logger.info("PostgreSQL extensions created successfully")
     except Exception as e:
         logger.error(f"Database initialization error: {e}")
         raise
 
+
 def drop_db():
     """Drop all database tables (use with caution)"""
     Base.metadata.drop_all(bind=engine)
     logger.warning("All database tables dropped")
+
 
 def truncate_db():
     """Truncate all tables (use with caution)"""
@@ -133,10 +121,8 @@ def truncate_db():
 def check_db_health() -> bool:
     """Check database connection health"""
     try:
-        from sqlalchemy import text
-        db = SessionLocal()
-        db.execute(text("SELECT 1"))
-        db.close()
+        with engine.connect() as connection:
+            connection.execute(text("SELECT 1"))
         return True
     except Exception as e:
         logger.error(f"Database health check failed: {e}")

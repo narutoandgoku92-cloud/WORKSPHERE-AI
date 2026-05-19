@@ -1,4 +1,4 @@
-name: work_sphere_ai
+﻿name: work_sphere_ai
 description: "AI-powered workforce management mobile app with face recognition and GPS tracking."
 publish_to: 'none'
 version: 0.1.0+1
@@ -19,6 +19,9 @@ dependencies:
   
   # HTTP Client
   dio: ^5.4.0
+  connectivity_plus: ^7.1.1
+  internet_connection_checker: ^1.0.0+1
+  flutter_secure_storage: ^9.0.0
 
   # Local Storage
   hive: ^2.2.3

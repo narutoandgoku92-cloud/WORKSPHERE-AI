@@ -70,7 +70,7 @@ docker-compose up -d
 
 Then visit:
 - **API**: http://localhost:8000/api/docs
-- **Credentials**: admin@optiwork.ai / password123
+- **Credentials**: admin@optiwork.ai / admin_password
 
 ---
 
