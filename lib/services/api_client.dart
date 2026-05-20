@@ -14,6 +14,8 @@ class ApiClient {
   static final String baseUrl = AppConfig.apiBaseUrl;
   final Dio _dio;
   final FlutterSecureStorage _secureStorage = const FlutterSecureStorage();
+  String? _currentAccessToken;
+  String? _currentRefreshToken;
   bool _refreshing = false;
 
   ApiClient()
@@ -40,7 +42,7 @@ class ApiClient {
             );
           }
 
-          final accessToken = await _readToken(_accessTokenKey);
+          final accessToken = _currentAccessToken ?? await _readToken(_accessTokenKey);
           if (accessToken != null && accessToken.isNotEmpty) {
             options.headers['Authorization'] = 'Bearer $accessToken';
           }
@@ -117,18 +119,49 @@ class ApiClient {
     }
   }
 
+  Future<void> setAuthToken(String accessToken) async {
+    _currentAccessToken = accessToken;
+    await _writeToken(_accessTokenKey, accessToken);
+  }
+
+  Future<void> clearAuthToken() async {
+    _currentAccessToken = null;
+    try {
+      await _secureStorage.delete(key: _accessTokenKey);
+    } catch (e) {
+      log('Secure storage delete failed: $e', name: 'ApiClient');
+    }
+  }
+
   Future<void> setAuthTokens({required String accessToken, required String refreshToken}) async {
+    _currentAccessToken = accessToken;
+    _currentRefreshToken = refreshToken;
     await _writeToken(_accessTokenKey, accessToken);
     await _writeToken(_refreshTokenKey, refreshToken);
   }
 
   Future<void> clearAuthTokens() async {
+    _currentAccessToken = null;
+    _currentRefreshToken = null;
     try {
       await _secureStorage.delete(key: _accessTokenKey);
       await _secureStorage.delete(key: _refreshTokenKey);
     } catch (e) {
       log('Secure storage delete failed: $e', name: 'ApiClient');
     }
+  }
+
+  Future<void> initialize() async {
+    _currentAccessToken = await _readToken(_accessTokenKey);
+    _currentRefreshToken = await _readToken(_refreshTokenKey);
+  }
+
+  Future<bool> hasAccessToken() async {
+    if (_currentAccessToken != null && _currentAccessToken!.isNotEmpty) {
+      return true;
+    }
+    final stored = await _readToken(_accessTokenKey);
+    return stored != null && stored.isNotEmpty;
   }
 
   Future<Response> _retryRequest(RequestOptions requestOptions) async {

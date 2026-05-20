@@ -33,7 +33,7 @@ class MyApp extends ConsumerWidget {
     final router = GoRouter(
       initialLocation: '/',
       redirect: (context, state) {
-        final isAuthenticated = authState.accessToken != null;
+        final isAuthenticated = authState.isAuthenticated;
         final path = state.matchedLocation;
 
         if (!isAuthenticated && path != '/login' && path != '/register') {

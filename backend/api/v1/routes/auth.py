@@ -29,6 +29,7 @@ from schemas import (
     UserRole
 )
 from models import User
+from repositories import UserRepository
 
 router = APIRouter(tags=["Authentication"])
 security_manager = SecurityManager()
@@ -379,3 +380,52 @@ async def change_password(
         )
 
     return {"message": "Password changed successfully"}
+
+
+@router.post("/register-admin-seed", response_model=LoginResponse)
+async def register_admin_seed(request: RegisterRequest, db: Session = Depends(get_db)):
+    """One-time endpoint to create initial admin user for the system"""
+
+    # Prevent multiple seeds
+    existing = db.query(User).first()
+    if existing:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin seed already completed"
+        )
+
+    # Create a new organization if provided or fallback to a default
+    org = None
+    if request.organization_name and request.organization_email:
+        org = OrganizationRepository.create(db, name=request.organization_name, email=request.organization_email)
+    else:
+        org = OrganizationRepository.create(db, name="Default Org", email=request.email)
+
+    # Create admin user
+    hashed_password = hash_password(request.password)
+    user = UserRepository.create(
+        db,
+        org_id=org.id,
+        email=request.email,
+        password_hash=hashed_password,
+        full_name=request.full_name,
+        role=UserRole.ADMIN.value
+    )
+
+    tokens = security_manager.create_tokens(
+        user_id=user.id,
+        org_id=org.id,
+        role=user.role,
+        permissions=[]
+    )
+
+    return LoginResponse(
+        access_token=tokens["access_token"],
+        refresh_token=tokens["refresh_token"],
+        user={
+            "id": user.id,
+            "email": user.email,
+            "full_name": user.full_name,
+            "role": user.role
+        }
+    )

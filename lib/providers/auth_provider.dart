@@ -1,5 +1,7 @@
 // lib/providers/auth_provider.dart
 
+import 'dart:convert';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import '../models/user_model.dart';
@@ -10,30 +12,26 @@ final apiClientProvider = Provider((ref) => ApiClient());
 // Authentication state
 class AuthState {
   final User? user;
-  final String? accessToken;
-  final String? refreshToken;
+  final bool isAuthenticated;
   final bool isLoading;
   final String? error;
 
   AuthState({
     this.user,
-    this.accessToken,
-    this.refreshToken,
+    this.isAuthenticated = false,
     this.isLoading = false,
     this.error,
   });
 
   AuthState copyWith({
     User? user,
-    String? accessToken,
-    String? refreshToken,
+    bool? isAuthenticated,
     bool? isLoading,
     String? error,
   }) {
     return AuthState(
       user: user ?? this.user,
-      accessToken: accessToken ?? this.accessToken,
-      refreshToken: refreshToken ?? this.refreshToken,
+      isAuthenticated: isAuthenticated ?? this.isAuthenticated,
       isLoading: isLoading ?? this.isLoading,
       error: error ?? this.error,
     );
@@ -50,11 +48,17 @@ class AuthNotifier extends StateNotifier<AuthState> {
 
   Future<void> _initializeAuth() async {
     try {
+      await apiClient.initialize();
+      final isAuthenticated = await apiClient.hasAccessToken();
+
       final authBox = await Hive.openBox<String>('auth');
-      final token = authBox.get('access_token');
-      if (token != null) {
-        state = state.copyWith(accessToken: token);
-      }
+      final userJson = authBox.get('user');
+      final user = userJson != null ? User.fromJson(jsonDecode(userJson)) : null;
+
+      state = state.copyWith(
+        isAuthenticated: isAuthenticated,
+        user: user,
+      );
     } catch (e) {
       print('Error initializing auth: $e');
     }
@@ -76,13 +80,11 @@ class AuthNotifier extends StateNotifier<AuthState> {
       );
       
       final authBox = await Hive.openBox<String>('auth');
-      await authBox.put('access_token', data.accessToken);
-      await authBox.put('refresh_token', data.refreshToken);
+      await authBox.put('user', jsonEncode(data.user.toJson()));
 
       state = state.copyWith(
         user: data.user,
-        accessToken: data.accessToken,
-        refreshToken: data.refreshToken,
+        isAuthenticated: true,
         isLoading: false,
         error: null,
       );
@@ -102,6 +104,21 @@ class AuthNotifier extends StateNotifier<AuthState> {
     final authBox = await Hive.openBox<String>('auth');
     await authBox.clear();
     state = AuthState();
+  }
+
+  Future<Map<String, dynamic>> createEmployee({
+    required Map<String, dynamic> employee,
+    Map<String, dynamic>? user,
+  }) async {
+    try {
+      final payload = {"employee": employee};
+      if (user != null) payload['user'] = user;
+
+      final response = await apiClient.post('/admin/create-user', data: payload);
+      return response.data as Map<String, dynamic>;
+    } catch (e) {
+      throw Exception('Failed to create employee: $e');
+    }
   }
 
   Future<bool> register(String email, String password, String fullName) async {
@@ -137,7 +154,7 @@ final authProvider = StateNotifierProvider<AuthNotifier, AuthState>((ref) {
 // Auth state selectors
 final isAuthenticatedProvider = Provider((ref) {
   final auth = ref.watch(authProvider);
-  return auth.accessToken != null;
+  return auth.isAuthenticated;
 });
 
 final currentUserProvider = Provider((ref) {

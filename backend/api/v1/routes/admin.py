@@ -1,17 +1,19 @@
 # backend/api/v1/routes/admin.py - Admin management routes
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Body
 from sqlalchemy.orm import Session
 
 from core.database import get_db
-from schemas import DashboardSummary, AdminDashboardResponse
+from schemas import DashboardSummary, AdminDashboardResponse, UserCreate, UserResponse, EmployeeCreate
 from repositories import (
     EmployeeRepository, AttendanceRepository, 
-    AnalyticsRepository, OrganizationRepository
+    AnalyticsRepository, OrganizationRepository, UserRepository
 )
 from api.v1.routes.auth import get_current_user
+from core.security import SecurityManager
 
 router = APIRouter(tags=["Admin"])
+security_manager = SecurityManager()
 
 # ============================================================================
 # ADMIN DASHBOARD ENDPOINTS
@@ -150,6 +152,83 @@ async def update_settings(
         "message": "Settings updated successfully",
         "settings": settings_data
     }
+
+
+@router.post("/create-user", response_model=UserResponse)
+async def create_user(
+    payload: dict = Body(...),
+    current_user: dict = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Admin-only: create employee and optional user account"""
+
+    if current_user.role not in ["admin", "hr", "manager"]:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized")
+
+    # Expect payload to contain employee and optional user fields
+    employee_data = payload.get("employee")
+    user_data = payload.get("user")
+
+    if not employee_data:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Employee data required")
+
+    # Create employee
+    employee_req = EmployeeCreate(**employee_data)
+    employee = EmployeeRepository.create(
+        db,
+        org_id=current_user.org_id,
+        employee_id=employee_req.employee_id,
+        full_name=employee_req.full_name,
+        email=employee_req.email,
+        phone=employee_req.phone,
+        job_title=employee_req.job_title,
+        dept_id=employee_req.dept_id,
+        salary_per_hour=employee_req.salary_per_hour,
+        hire_date=employee_req.hire_date,
+    )
+
+    created_user = None
+    if user_data:
+        # Create a linked user account
+        user_req = UserCreate(**user_data)
+        password_hash = security_manager.hash_password(user_req.password)
+        created_user = UserRepository.create(
+            db,
+            org_id=current_user.org_id,
+            email=user_req.email,
+            password_hash=password_hash,
+            full_name=user_req.full_name,
+            role=user_req.role.value if hasattr(user_req.role, 'value') else str(user_req.role),
+            employee_id=employee.id
+        )
+
+    # Return created user if provided, otherwise return a minimal response based on employee
+    if created_user:
+        return created_user
+
+    return {
+        "id": employee.id,
+        "email": employee.email or "",
+        "full_name": employee.full_name,
+        "role": "employee",
+        "is_active": True,
+        "last_login": None,
+        "created_at": employee.created_at
+    }
+
+
+@router.get("/get-users", response_model=list[UserResponse])
+async def get_users(
+    skip: int = 0,
+    limit: int = 100,
+    current_user: dict = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    if current_user.role not in ["admin", "hr", "manager"]:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized")
+
+    users = UserRepository.list_org_users(db, current_user.org_id, skip=skip, limit=limit)
+    return users
 
 @router.post("/backup")
 async def create_backup(
