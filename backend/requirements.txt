@@ -18,7 +18,7 @@ cryptography==41.0.7
 python-dotenv==1.0.0
 PyJWT==2.8.0
 psycopg[binary]==3.1.11
-gunicorn==22.1.0
+gunicorn==22.0.0
 
 # AI/ML - Face Recognition
 insightface==0.7.3
