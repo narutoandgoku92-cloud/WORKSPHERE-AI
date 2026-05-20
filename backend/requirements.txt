@@ -66,8 +66,7 @@ flake8==6.1.0
 isort==5.13.2
 mypy==1.7.1
 
-# Documentation
-swagger-ui==0.0.2
+
 
 # Rate Limiting
 slowapi==0.1.9
