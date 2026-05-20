@@ -81,8 +81,8 @@ class Settings(BaseSettings):
     # ========================================================================
     # SECURITY SETTINGS
     # ========================================================================
-    ALLOWED_HOSTS: List[str] = Field(default_factory=list)
-    CORS_ORIGINS: List[str] = Field(default_factory=list)
+    ALLOWED_HOSTS: str | List[str] = Field(default_factory=list)
+    CORS_ORIGINS: str | List[str] = Field(default_factory=list)
 
     RATE_LIMIT_ENABLED: bool = os.getenv("RATE_LIMIT_ENABLED", "true").lower() == "true"
     RATE_LIMIT_AUTH_PER_MINUTE: int = int(os.getenv("RATE_LIMIT_AUTH_PER_MINUTE", "30"))
