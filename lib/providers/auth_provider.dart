@@ -70,9 +70,13 @@ class AuthNotifier extends StateNotifier<AuthState> {
 
       final data = LoginResponse.fromJson(response.data);
       
-      apiClient.setAuthToken(data.accessToken);
+      await apiClient.setAuthTokens(
+        accessToken: data.accessToken,
+        refreshToken: data.refreshToken,
+      );
       
       final authBox = await Hive.openBox<String>('auth');
+      await authBox.put('access_token', data.accessToken);
       await authBox.put('refresh_token', data.refreshToken);
 
       state = state.copyWith(
@@ -94,7 +98,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
   }
 
   Future<void> logout() async {
-    await apiClient.clearAuthToken();
+    await apiClient.clearAuthTokens();
     final authBox = await Hive.openBox<String>('auth');
     await authBox.clear();
     state = AuthState();
