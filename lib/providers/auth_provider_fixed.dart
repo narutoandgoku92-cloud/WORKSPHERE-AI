@@ -1,6 +1,3 @@
-# CRITICAL FIX #5: Flutter Token Refresh & Offline Support
-# lib/providers/auth_provider_fixed.dart - Production-ready auth with token refresh
-
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
