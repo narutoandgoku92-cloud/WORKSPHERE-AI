@@ -102,7 +102,7 @@ async def verify_face(
     if not stored_face:
         # Fallback to any face if primary not found
         stored_faces = FaceEmbeddingRepository.get_all_employee(db, employee.id)
-        if not stored_faces:
+        if not stored_faces or len(stored_faces) == 0:
             raise HTTPException(status_code=400, detail="No face enrolled for this employee")
         stored_face = stored_faces[0]
 
@@ -124,7 +124,7 @@ async def verify_face(
         stored_embedding = np.array([float(x) for x in stored_face.embedding.split(",")])
 
         # Verify
-        result = face_service.verify_face(current_embedding, stored_embedding)
+        result = face_service.verify_face(current_embedding, stored_embedding, request.threshold)
         
         return FaceVerificationResponse(
             verified=result["is_match"],

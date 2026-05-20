@@ -32,7 +32,7 @@ async def check_in(
     if not employee:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Employee not found"
+            detail="Employee record not found"
         )
     
     # Check if already checked in today
@@ -46,9 +46,15 @@ async def check_in(
     # Verify geofence if available
     gps_verified = False
     geofences = GeofenceRepository.get_org_geofences(db, employee.org_id)
-    if geofences:
-        geofence = geofences[0]  # Use first geofence
-        # Calculate distance (simplified)
+    if geofences and len(geofences) > 0:
+        geofence = geofences[0]
+        # Validate coordinates
+        if not (-90 <= request.latitude <= 90 and -180 <= request.longitude <= 180):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid GPS coordinates"
+            )
+        # Calculate distance
         distance = calculate_distance(
             request.latitude, request.longitude,
             geofence.latitude, geofence.longitude

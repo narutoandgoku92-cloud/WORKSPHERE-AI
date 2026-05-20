@@ -9,6 +9,7 @@ from core.security import hash_password
 from schemas import UserCreate, UserUpdate, UserResponse
 from repositories import UserRepository
 from api.v1.routes.auth import get_current_user
+from models import User
 
 router = APIRouter(tags=["Users"])
 
@@ -18,23 +19,7 @@ router = APIRouter(tags=["Users"])
 
 @router.get("/me", response_model=UserResponse)
 async def get_current_user_profile(
-    current_user: dict = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
-    """Get current user profile"""
-    
-    user = UserRepository.get_by_id(db, current_user.id)
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not found"
-        )
-    
-    return user
-
-@router.get("/me", response_model=UserResponse)
-async def get_current_user_profile(
-    current_user: dict = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """Get current user profile"""
@@ -51,7 +36,7 @@ async def get_current_user_profile(
 @router.post("", response_model=UserResponse)
 async def create_user(
     user_data: UserCreate,
-    current_user: dict = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """Create new user (admin only)"""
@@ -87,7 +72,7 @@ async def create_user(
 async def list_users(
     skip: int = 0,
     limit: int = 100,
-    current_user: dict = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """List organization users"""
@@ -98,7 +83,7 @@ async def list_users(
 @router.get("/{user_id}", response_model=UserResponse)
 async def get_user(
     user_id: str,
-    current_user: dict = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """Get user by ID"""
@@ -116,7 +101,7 @@ async def get_user(
 async def update_user(
     user_id: str,
     user_data: UserUpdate,
-    current_user: dict = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """Update user"""
@@ -147,7 +132,7 @@ async def update_user(
 @router.delete("/{user_id}")
 async def delete_user(
     user_id: str,
-    current_user: dict = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """Delete user"""
