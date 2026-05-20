@@ -110,6 +110,14 @@ class Settings(BaseSettings):
     SMTP_FROM_NAME: str = "OptiWork AI"
 
     # ========================================================================
+    # FACE RECOGNITION
+    # ========================================================================
+    USE_GPU: bool = Field(default=False, env="USE_GPU")
+    FACE_MATCH_THRESHOLD: float = Field(default=0.5, env="FACE_MATCH_THRESHOLD")
+    FACE_LIVENESS_THRESHOLD: float = Field(default=0.7, env="FACE_LIVENESS_THRESHOLD")
+    FACE_QUALITY_MIN_SCORE: float = Field(default=0.55, env="FACE_QUALITY_MIN_SCORE")
+
+    # ========================================================================
     # OTHER CONFIGURATION
     # ========================================================================
     SENTRY_DSN: str = os.getenv("SENTRY_DSN", "")
