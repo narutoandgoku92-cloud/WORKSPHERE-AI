@@ -121,6 +121,8 @@ class Settings(BaseSettings):
     # OTHER CONFIGURATION
     # ========================================================================
     SENTRY_DSN: str = os.getenv("SENTRY_DSN", "")
+    # Port for running the app (Render provides PORT)
+    PORT: int = int(os.getenv("PORT", "8000"))
 
     class Config:
         env_file = ".env"
@@ -164,7 +166,18 @@ class Settings(BaseSettings):
                         "http://localhost:8000"
                     ]
                 )
+        # If running on Render or similar PaaS, ensure common host patterns are allowed
+        render_detected = bool(os.getenv("RENDER") or os.getenv("RENDER_INTERNAL_HOSTNAME") or os.getenv("RENDER_SERVICE_ID") or os.getenv("RENDER_REGION"))
+        # Always accept onrender.com subdomains when Render is detected
+        if render_detected:
+            # allow both onrender.com and render.com subdomains
+            extras = ["*.onrender.com", "*.render.com"]
+            for ex in extras:
+                if ex not in self.ALLOWED_HOSTS:
+                    self.ALLOWED_HOSTS.append(ex)
 
+        # If ALLOWED_HOSTS contains a single '*' entry, treat it as wildcard and leave as-is
+        return self
         return self
 
 

@@ -38,12 +38,14 @@ COPY . .
 RUN useradd -m appuser && chown -R appuser:appuser /app
 USER appuser
 
-# Expose FastAPI port
-EXPOSE 8000
+ENV PORT=8000
 
-# FIXED HEALTHCHECK (your version would silently fail)
+# Expose FastAPI port (from env)
+EXPOSE ${PORT}
+
+# HEALTHCHECK uses shell form so $PORT is expanded
 HEALTHCHECK --interval=30s --timeout=5s --start-period=40s --retries=3 \
-CMD python -c "import requests; requests.get('http://127.0.0.1:8000/health', timeout=3)"
+    CMD-SHELL python -c "import requests, os; requests.get(f'http://127.0.0.1:{os.getenv(\"PORT\",\"8000\")}/health', timeout=3)"
 
-# Run FastAPI
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Run FastAPI using the PORT env variable (shell form to expand env)
+CMD sh -c "exec uvicorn main:app --host 0.0.0.0 --port ${PORT}"

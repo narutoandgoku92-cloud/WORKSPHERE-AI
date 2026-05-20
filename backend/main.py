@@ -14,6 +14,7 @@ from core.database import get_db, init_db, check_db_health
 from core.security import SecurityManager
 from api.v1.routes import auth, users, attendance, face_recognition, gps, analytics, payroll, admin
 from services.cache import RedisManager
+from services.cache import get_redis
 from middleware.auth import JWTMiddleware
 from middleware.error_handler import error_handler
 from middleware.logging import LoggingMiddleware
@@ -37,10 +38,10 @@ async def lifespan(app: FastAPI):
         logger.info("Database initialization skipped. Use Alembic migrations for schema management.")
 
     try:
-        redis_manager = RedisManager()
-        await redis_manager.connect()
+        # Use get_redis() which provides a safe fallback when Redis is unavailable
+        redis_manager = await get_redis()
         app.state.redis_manager = redis_manager
-        logger.info("Redis connection established")
+        logger.info("Redis connection established (or dummy fallback in use)")
     except Exception as e:
         logger.warning(f"Redis connection failed: {e}")
         app.state.redis_manager = None
@@ -72,10 +73,16 @@ def create_app() -> FastAPI:
         lifespan=lifespan
     )
 
-    app.add_middleware(
-        TrustedHostMiddleware,
-        allowed_hosts=settings.ALLOWED_HOSTS
-    )
+    # Add TrustedHostMiddleware only when ALLOWED_HOSTS is configured.
+    # If ALLOWED_HOSTS contains '*' we skip the middleware to allow all hosts.
+    if settings.ALLOWED_HOSTS:
+        if "*" in settings.ALLOWED_HOSTS:
+            logger.warning("ALLOWED_HOSTS contains '*' — skipping TrustedHostMiddleware (allowing all hosts)")
+        else:
+            app.add_middleware(
+                TrustedHostMiddleware,
+                allowed_hosts=settings.ALLOWED_HOSTS
+            )
 
     app.add_middleware(
         CORSMiddleware,
@@ -155,11 +162,10 @@ app = create_app()
 
 if __name__ == "__main__":
     import uvicorn
-
     uvicorn.run(
         "main:app",
         host="0.0.0.0",
-        port=8000,
+        port=settings.PORT,
         reload=settings.DEBUG,
         log_level="info"
     )
