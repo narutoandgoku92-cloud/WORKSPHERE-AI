@@ -7,7 +7,16 @@ from sqlalchemy import and_
 from sqlalchemy.exc import IntegrityError
 import logging
 import numpy as np
-import cv2
+try:
+    import cv2
+except Exception:
+    class _MissingCV2:
+        def __getattr__(self, name):
+            raise RuntimeError(
+                "OpenCV (cv2) is required for this operation. Install with: pip install opencv-python"
+            )
+
+    cv2 = _MissingCV2()
 import base64
 
 logger = logging.getLogger(__name__)

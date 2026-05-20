@@ -11,7 +11,16 @@ from api.v1.routes.auth import get_current_user
 
 from services.face_recognition import FaceRecognitionService
 import numpy as np
-import cv2
+try:
+    import cv2
+except Exception:
+    class _MissingCV2:
+        def __getattr__(self, name):
+            raise RuntimeError(
+                "OpenCV (cv2) is required for this operation. Install with: pip install opencv-python"
+            )
+
+    cv2 = _MissingCV2()
 import io
 
 router = APIRouter(tags=["Face Recognition"])

@@ -1,6 +1,15 @@
 # backend/services/face_recognition.py - Facial recognition AI service
 
-import cv2
+try:
+    import cv2
+except Exception:
+    class _MissingCV2:
+        def __getattr__(self, name):
+            raise RuntimeError(
+                "OpenCV (cv2) is required for this operation. Install with: pip install opencv-python"
+            )
+
+    cv2 = _MissingCV2()
 import numpy as np
 from typing import Optional, Dict, Any, Tuple
 import logging

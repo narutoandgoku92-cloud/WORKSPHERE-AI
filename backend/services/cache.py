@@ -57,6 +57,8 @@ class RedisManager:
     
     async def ping(self):
         """Ping Redis"""
+        if not self.redis_client:
+            raise RuntimeError("Redis client not connected")
         return self.redis_client.ping()
 
 # Global instance
@@ -67,5 +69,28 @@ async def get_redis() -> RedisManager:
     global redis_manager
     if not redis_manager:
         redis_manager = RedisManager()
-        await redis_manager.connect()
+        try:
+            await redis_manager.connect()
+        except Exception:
+            # Provide a no-op fallback so callers can continue without raising
+            class DummyRedisManager:
+                async def connect(self):
+                    return
+
+                async def disconnect(self):
+                    return
+
+                async def set(self, key: str, value: Any, ttl: int = None):
+                    return
+
+                async def get(self, key: str) -> Optional[Any]:
+                    return None
+
+                async def delete(self, key: str):
+                    return
+
+                async def ping(self):
+                    raise RuntimeError("Redis not available")
+
+            redis_manager = DummyRedisManager()
     return redis_manager
