@@ -6,11 +6,19 @@ class AppConfig {
   static const String appName = 'WorkSphere AI';
   static const String appVersion = '1.0.0';
 
-  static const String environment = String.fromEnvironment('ENVIRONMENT', defaultValue: 'development');
-  static const String _apiBaseUrl = "https://worksphere-ai.onrender.com/api/v1";
-  static const String _defaultApiBaseUrl = String.fromEnvironment('API_DEFAULT_BASE_URL', defaultValue: '');
+  static const String environment =
+      String.fromEnvironment('ENVIRONMENT', defaultValue: 'development');
 
-  static final Duration apiTimeout = Duration(seconds: int.fromEnvironment('API_TIMEOUT_SECONDS', defaultValue: 30));
+  // ✅ FIX: REMOVE /api/v1 from base URL (prevents duplication bug)
+  static const String _apiBaseUrl =
+      "https://worksphere-ai.onrender.com";
+
+  static const String _defaultApiBaseUrl =
+      String.fromEnvironment('API_DEFAULT_BASE_URL', defaultValue: '');
+
+  static final Duration apiTimeout =
+      Duration(seconds: int.fromEnvironment('API_TIMEOUT_SECONDS', defaultValue: 30));
+
   static const int maxRetryAttempts = 3;
   static const int maxRefreshRetries = 1;
   static const int retryBaseDelayMs = 500;
@@ -25,31 +33,38 @@ class AppConfig {
     }
 
     if (environment == 'production' || environment == 'staging') {
-      throw StateError('API_BASE_URL must be provided with --dart-define=API_BASE_URL for staging and production builds.');
+      throw StateError(
+        'API_BASE_URL must be provided with --dart-define=API_BASE_URL for staging and production builds.',
+      );
     }
 
     if (kIsWeb) {
-      throw StateError('Web builds must provide API_BASE_URL via --dart-define=API_BASE_URL');
+      throw StateError(
+        'Web builds must provide API_BASE_URL via --dart-define=API_BASE_URL',
+      );
     }
 
     if (defaultTargetPlatform == TargetPlatform.android) {
-      return _normalizeApiBaseUrl('http://10.0.2.2:8000/api/v1');
+      return _normalizeApiBaseUrl('http://10.0.2.2:8000');
     }
 
-    return _normalizeApiBaseUrl('http://127.0.0.1:8000/api/v1');
+    return _normalizeApiBaseUrl('http://127.0.0.1:8000');
   }
 
   static String _normalizeApiBaseUrl(String url) {
     final sanitized = url.trim();
-    final normalized = sanitized.endsWith('/') ? sanitized.substring(0, sanitized.length - 1) : sanitized;
+    final normalized = sanitized.endsWith('/')
+        ? sanitized.substring(0, sanitized.length - 1)
+        : sanitized;
 
     final uri = Uri.parse(normalized);
+
     if (isProduction && uri.scheme != 'https') {
       throw StateError('Production API_BASE_URL must use https://');
     }
 
-    final base = normalized.replaceAll(RegExp(r'(/api/v1)+$'), '');
-    return '$base/api/v1';
+    // ✅ FIX: Always enforce single /api/v1 only here
+    return '$normalized/api/v1';
   }
 
   static bool get isProduction => environment == 'production';
@@ -65,8 +80,10 @@ class AppConfig {
   static const bool requireBiometricAuth = false;
 
   static const double defaultBorderRadius = 8.0;
-  static const Duration defaultAnimationDuration = Duration(milliseconds: 300);
+  static const Duration defaultAnimationDuration =
+      Duration(milliseconds: 300);
 
   static const double gpsAccuracyThreshold = 100.0;
-  static const Duration faceRecognitionTimeout = Duration(seconds: 30);
+  static const Duration faceRecognitionTimeout =
+      Duration(seconds: 30);
 }
