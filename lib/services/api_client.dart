@@ -11,7 +11,7 @@ import '../config/app_config.dart';
 class ApiClient {
   late final Dio _dio;
   late final FlutterSecureStorage _secureStorage;
-  late final Box<String>? _hiveBox;
+  Box<String>? _hiveBox;
   bool _isWebPlatform = false;
 
   String? _accessToken;
@@ -167,12 +167,22 @@ class ApiClient {
   }
 
   Future<void> clearAuthTokens() async {
-    _accessToken = null;
-    _refreshTokenValue = null;
+  _accessToken = null;
+  _refreshTokenValue = null;
 
-    await _secureStorage.delete(key: _accessTokenKey);
-    await _secureStorage.delete(key: _refreshTokenKey);
+  try {
+    if (_isWebPlatform) {
+      _hiveBox ??= await Hive.openBox<String>('auth_web');
+      await _hiveBox?.delete(_accessTokenKey);
+      await _hiveBox?.delete(_refreshTokenKey);
+    } else {
+      await _secureStorage.delete(key: _accessTokenKey);
+      await _secureStorage.delete(key: _refreshTokenKey);
+    }
+  } catch (e) {
+    log('❌ Failed to clear tokens: $e');
   }
+}
 
   Future<void> initialize() async {
     _accessToken = await _read(_accessTokenKey);
@@ -244,32 +254,37 @@ class ApiClient {
   // =========================
   // HTTP METHODS
   // =========================
-  Future<Response> post(String path, {dynamic data}) {
-    return _dio.post(path, data: data);
+  Future<Response> post(String path, {dynamic data , Options? options}) {
+    return _dio.post(path, data: data, options: options);
   }
 
-  Future<Response> get(String path) {
-    return _dio.get(path);
+  Future<Response> get(String path, {Options? options}) {
+    return _dio.get(path, options: options);
   }
 
-  Future<Response> put(String path, {dynamic data}) {
-    return _dio.put(path, data: data);
+  Future<Response> put(String path, {dynamic data, Options? options}) {
+    return _dio.put(path, data: data, options: options);
   }
 
-  Future<Response> delete(String path) {
-    return _dio.delete(path);
+  Future<Response> delete(String path,{Options? options}) {
+    return _dio.delete(path, options: options);
   }
 
   // =========================
   // HEALTH CHECK
   // =========================
   Future<bool> healthCheck() async {
-    try {
-      final response = await _dio.get('/health');
-      return response.statusCode == 200;
-    } catch (e) {
-      log('❌ Health check failed: $e');
-      return false;
-    }
+  try {
+    final baseUrl = AppConfig.apiBaseUrl.replaceAll('/api/v1', '');
+
+    final response = await Dio().get(
+      '$baseUrl/health',
+    );
+
+    return response.statusCode == 200;
+  } catch (e) {
+    log('❌ Health check failed: $e');
+    return false;
   }
+}
 }

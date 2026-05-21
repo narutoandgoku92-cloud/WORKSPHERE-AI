@@ -20,8 +20,8 @@ class ProfileService {
     final response = await apiClient.put(
       '/users/me',
       data: {
-        if (fullName != null) 'full_name': fullName,
-        if (phone != null) 'phone': phone,
+        'full_name': ?fullName,
+        'phone': ?phone,
       },
     );
     return User.fromJson(response.data);

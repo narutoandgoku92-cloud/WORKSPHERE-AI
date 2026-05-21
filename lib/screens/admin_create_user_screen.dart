@@ -3,7 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:work_sphere_ai/providers/auth_provider.dart';
 
 class AdminCreateUserScreen extends ConsumerStatefulWidget {
-  const AdminCreateUserScreen({Key? key}) : super(key: key);
+  const AdminCreateUserScreen({super.key});
 
   @override
   ConsumerState<AdminCreateUserScreen> createState() => _AdminCreateUserScreenState();
@@ -94,7 +94,7 @@ class _AdminCreateUserScreenState extends ConsumerState<AdminCreateUserScreen> {
                   onSaved: (v) => _user['password'] = v!.trim(),
                 ),
                 DropdownButtonFormField<String>(
-                  value: 'employee',
+                  initialValue: 'employee',
                   items: const [
                     DropdownMenuItem(value: 'employee', child: Text('Employee')),
                     DropdownMenuItem(value: 'manager', child: Text('Manager')),

@@ -9,7 +9,7 @@ import 'package:go_router/go_router.dart';
 import '../providers/auth_provider.dart';
 
 class FaceEnrollmentScreen extends ConsumerStatefulWidget {
-  const FaceEnrollmentScreen({Key? key}) : super(key: key);
+  const FaceEnrollmentScreen({super.key});
 
   @override
   ConsumerState<FaceEnrollmentScreen> createState() => _FaceEnrollmentScreenState();

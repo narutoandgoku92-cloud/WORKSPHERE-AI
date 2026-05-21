@@ -7,7 +7,7 @@ import '../config/app_config.dart';
 import '../providers/auth_provider.dart';
 
 class SettingsScreen extends ConsumerStatefulWidget {
-  const SettingsScreen({Key? key}) : super(key: key);
+  const SettingsScreen({super.key});
 
   @override
   ConsumerState<SettingsScreen> createState() => _SettingsScreenState();

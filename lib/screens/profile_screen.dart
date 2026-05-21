@@ -7,7 +7,7 @@ import '../providers/auth_provider.dart';
 import '../providers/profile_provider.dart';
 
 class ProfileScreen extends ConsumerStatefulWidget {
-  const ProfileScreen({Key? key}) : super(key: key);
+  const ProfileScreen({super.key});
 
   @override
   ConsumerState<ProfileScreen> createState() => _ProfileScreenState();

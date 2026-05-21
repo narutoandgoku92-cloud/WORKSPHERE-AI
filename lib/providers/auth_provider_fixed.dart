@@ -2,13 +2,12 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hive_flutter/hive_flutter.dart';
-import 'package:dio/dio.dart';
 import '../models/user_model.dart';
 import '../services/api_client.dart';
 
 final apiClientProvider = Provider((ref) => ApiClient());
 
-/// Authentication state with complete session management
+/// Authentication state
 class AuthState {
   final User? user;
   final String? accessToken;
@@ -49,239 +48,202 @@ class AuthState {
   }
 }
 
-/// Production-ready authentication notifier
 class AuthNotifier extends StateNotifier<AuthState> {
   final ApiClient apiClient;
+
   Timer? _refreshTimer;
-  Timer? _expirationCheckTimer;
+  Timer? _expirationTimer;
   Box<String>? _authBox;
-  
-  // Configuration
-  static const int _tokenRefreshMinutesBefore = 5; // Refresh 5 minutes before expiration
-  static const int _expirationCheckIntervalSeconds = 60; // Check every minute
+  bool _isRefreshing = false;
+
+  static const int _refreshBeforeMinutes = 5;
+  static const int _checkIntervalSeconds = 60;
 
   AuthNotifier(this.apiClient) : super(AuthState()) {
-    _initializeAuth();
+    _init();
   }
 
-  /// Initialize authentication from local storage
-  Future<void> _initializeAuth() async {
+  // ----------------------------
+  // SAFE HIVE ACCESS
+  // ----------------------------
+  Future<Box<String>> get _box async {
+    return _authBox ??= await Hive.openBox<String>('auth');
+  }
+
+  Future<void> _init() async {
     try {
       _authBox = await Hive.openBox<String>('auth');
-      
-      final accessToken = _authBox?.get('access_token');
-      final refreshToken = _authBox?.get('refresh_token');
-      final userJson = _authBox?.get('user');
-      final expiresAtStr = _authBox?.get('token_expires_at');
-      
-      if (accessToken != null) {
-        User? user;
-        if (userJson != null) {
-          try {
-            user = User.fromJson(jsonDecode(userJson));
-          } catch (e) {
-            print('Error decoding user: $e');
-          }
-        }
-        
-        DateTime? expiresAt;
-        if (expiresAtStr != null) {
-          try {
-            expiresAt = DateTime.parse(expiresAtStr);
-          } catch (e) {
-            print('Error parsing expiration time: $e');
-          }
-        }
-        
+
+      final access = _authBox!.get('access_token');
+      final refresh = _authBox!.get('refresh_token');
+      final userJson = _authBox!.get('user');
+      final expires = _authBox!.get('token_expires_at');
+
+      if (access != null) {
         state = state.copyWith(
-          accessToken: accessToken,
-          refreshToken: refreshToken,
-          user: user,
-          tokenExpiresAt: expiresAt,
+          accessToken: access,
+          refreshToken: refresh,
+          user: userJson != null ? User.fromJson(jsonDecode(userJson)) : null,
+          tokenExpiresAt:
+              expires != null ? DateTime.tryParse(expires) : null,
         );
-        
-        // Set up refresh timer
-        _setupTokenRefreshTimer();
-        _setupExpirationCheckTimer();
+
+        _startTimers();
       }
     } catch (e) {
-      print('Error initializing auth: $e');
+      print('Auth init error: $e');
     }
   }
 
-  /// Set up timer to refresh token before expiration
-  void _setupTokenRefreshTimer() {
+  // ----------------------------
+  // TIMERS
+  // ----------------------------
+  void _startTimers() {
+    _startRefreshTimer();
+    _startExpirationTimer();
+  }
+
+  void _startRefreshTimer() {
     _refreshTimer?.cancel();
-    
-    if (state.tokenExpiresAt == null) return;
-    
-    final now = DateTime.now();
-    final expiresAt = state.tokenExpiresAt!;
-    final refreshAt = expiresAt.subtract(
-      Duration(minutes: _tokenRefreshMinutesBefore)
-    );
-    
-    final duration = refreshAt.difference(now);
-    
+
+    final exp = state.tokenExpiresAt;
+    if (exp == null) return;
+
+    final refreshAt =
+        exp.subtract(Duration(minutes: _refreshBeforeMinutes));
+    final duration = refreshAt.difference(DateTime.now());
+
     if (duration.isNegative) {
-      // Token already expired or will expire within refresh window
-      print('Token expiring soon, refreshing immediately');
       _refreshAccessToken();
       return;
     }
-    
-    print('Token refresh scheduled in ${duration.inMinutes} minutes');
-    
-    _refreshTimer = Timer(duration, () {
-      print('Token refresh triggered');
-      _refreshAccessToken();
+
+    _refreshTimer = Timer(duration, _refreshAccessToken);
+  }
+
+  void _startExpirationTimer() {
+    _expirationTimer?.cancel();
+
+    _expirationTimer =
+        Timer.periodic(Duration(seconds: _checkIntervalSeconds), (_) {
+      final exp = state.tokenExpiresAt;
+      if (exp == null) return;
+
+      if (DateTime.now().isAfter(exp)) {
+        logout();
+      }
     });
   }
 
-  /// Set up periodic check for token expiration
-  void _setupExpirationCheckTimer() {
-    _expirationCheckTimer?.cancel();
-    
-    _expirationCheckTimer = Timer.periodic(
-      Duration(seconds: _expirationCheckIntervalSeconds),
-      (_) {
-        if (state.tokenExpiresAt != null) {
-          final now = DateTime.now();
-          final expiresAt = state.tokenExpiresAt!;
-          
-          if (now.isAfter(expiresAt)) {
-            print('Token expired, logging out');
-            logout();
-          } else if (state.isTokenExpired == false) {
-            final timeUntilExpire = expiresAt.difference(now);
-            if (timeUntilExpire.inMinutes <= _tokenRefreshMinutesBefore) {
-              print('Token expiring in ${timeUntilExpire.inMinutes} minutes');
-              _setupTokenRefreshTimer();
-            }
-          }
-        }
-      },
-    );
-  }
-
-  /// Refresh access token using refresh token
+  // ----------------------------
+  // REFRESH TOKEN (SAFE)
+  // ----------------------------
   Future<void> _refreshAccessToken() async {
+    if (_isRefreshing) return;
+    _isRefreshing = true;
+
     try {
-      if (state.refreshToken == null) {
-        print('No refresh token available');
-        await logout();
-        return;
+      final refreshToken = state.refreshToken;
+
+      if (refreshToken == null || refreshToken.isEmpty) {
+        throw Exception("Missing refresh token");
       }
-      
-      final response = await apiClient.post(
+
+      final res = await apiClient.post(
         '/api/v1/auth/refresh',
-        data: {'refresh_token': state.refreshToken},
+        data: {'refresh_token': refreshToken},
       );
-      
-      final newAccessToken = response.data['access_token'] as String;
-      final newRefreshToken = response.data['refresh_token'] as String?;
-      final expiresIn = response.data['expires_in'] as int? ?? 900; // Default 15 minutes
-      
-      // Calculate new expiration time
-      final newExpiresAt = DateTime.now().add(Duration(seconds: expiresIn));
-      
-      // Update tokens
-      apiClient.setAuthToken(newAccessToken);
-      _authBox?.put('access_token', newAccessToken);
-      if (newRefreshToken != null) {
-        _authBox?.put('refresh_token', newRefreshToken);
-      }
-      _authBox?.put('token_expires_at', newExpiresAt.toIso8601String());
-      
+
+      final newAccess = res.data['access_token'] as String;
+      final newRefresh = res.data['refresh_token'] as String?;
+      final expiresIn = res.data['expires_in'] as int? ?? 900;
+
+      final finalRefresh = newRefresh ?? refreshToken;
+
+      final newExp =
+          DateTime.now().add(Duration(seconds: expiresIn));
+
+      apiClient.setAuthTokens(
+        accessToken: newAccess,
+        refreshToken: finalRefresh,
+      );
+
+      final box = await _box;
+
+      await box.put('access_token', newAccess);
+      await box.put('refresh_token', finalRefresh);
+      await box.put('token_expires_at', newExp.toIso8601String());
+
       state = state.copyWith(
-        accessToken: newAccessToken,
-        refreshToken: newRefreshToken ?? state.refreshToken,
-        tokenExpiresAt: newExpiresAt,
+        accessToken: newAccess,
+        refreshToken: finalRefresh,
+        tokenExpiresAt: newExp,
         isTokenExpired: false,
       );
-      
-      print('✅ Token refreshed successfully');
-      
-      // Reset refresh timer
-      _setupTokenRefreshTimer();
-    
+
+      _startRefreshTimer();
     } catch (e) {
-      print('❌ Token refresh failed: $e');
-      // If refresh fails, logout user
+      print('Refresh failed: $e');
       await logout();
+    } finally {
+      _isRefreshing = false;
     }
   }
 
-  /// Login with email and password
+  // ----------------------------
+  // LOGIN
+  // ----------------------------
   Future<bool> login(String email, String password) async {
-    state = state.copyWith(isLoading: true, error: null);
+    state = state.copyWith(isLoading: true);
+
     try {
-      final response = await apiClient.post(
+      final res = await apiClient.post(
         '/api/v1/auth/login',
-        data: {
-          'email': email,
-          'password': password,
-        },
+        data: {'email': email, 'password': password},
       );
-      
-      final data = response.data;
-      final accessToken = data['access_token'] as String;
-      final refreshToken = data['refresh_token'] as String;
-      final userJson = jsonEncode(data['user']);
-      
-      // Calculate token expiration (15 minutes by default)
-      final expiresIn = data['expires_in'] as int? ?? 900;
-      final expiresAt = DateTime.now().add(Duration(seconds: expiresIn));
-      
-      // Save to local storage
-      apiClient.setAuthToken(accessToken);
-      _authBox = await Hive.openBox<String>('auth');
-      await _authBox?.put('access_token', accessToken);
-      await _authBox?.put('refresh_token', refreshToken);
-      await _authBox?.put('user', userJson);
-      await _authBox?.put('token_expires_at', expiresAt.toIso8601String());
-      
-      // Parse user
+
+      final data = res.data;
+
+      final access = data['access_token'] as String;
+      final refresh = data['refresh_token'] as String;
       final user = User.fromJson(data['user']);
-      
+
+      final expires =
+          DateTime.now().add(Duration(seconds: data['expires_in'] ?? 900));
+
+      final box = await _box;
+
+      await box.put('access_token', access);
+      await box.put('refresh_token', refresh);
+      await box.put('user', jsonEncode(data['user']));
+      await box.put('token_expires_at', expires.toIso8601String());
+
+      apiClient.setAuthTokens(
+        accessToken: access,
+        refreshToken: refresh,
+      );
+
       state = state.copyWith(
         user: user,
-        accessToken: accessToken,
-        refreshToken: refreshToken,
-        tokenExpiresAt: expiresAt,
+        accessToken: access,
+        refreshToken: refresh,
+        tokenExpiresAt: expires,
         isLoading: false,
-        error: null,
       );
-      
-      // ✅ Start token refresh timer
-      _setupTokenRefreshTimer();
-      _setupExpirationCheckTimer();
-      
-      print('✅ Login successful');
+
+      _startTimers();
       return true;
-    
-    } on DioException catch (e) {
-      final errorMessage = e.response?.data?['detail'] ?? 'Login failed';
-      state = state.copyWith(
-        isLoading: false,
-        error: errorMessage.toString(),
-      );
-      print('❌ Login failed: $errorMessage');
-      return false;
-    
     } catch (e) {
-      state = state.copyWith(
-        isLoading: false,
-        error: 'Login failed: ${e.toString()}',
-      );
-      print('❌ Login error: $e');
+      state = state.copyWith(isLoading: false, error: e.toString());
       return false;
     }
   }
 
-  /// Register new account
-  Future<bool> register(String email, String password, String fullName) async {
-    state = state.copyWith(isLoading: true, error: null);
+  // ----------------------------
+  // REGISTER
+  // ----------------------------
+  Future<bool> register(
+      String email, String password, String fullName) async {
     try {
       await apiClient.post(
         '/api/v1/auth/register',
@@ -292,105 +254,51 @@ class AuthNotifier extends StateNotifier<AuthState> {
           'role': 'employee',
         },
       );
-      
-      state = state.copyWith(
-        isLoading: false,
-        error: null,
-      );
-      
-      print('✅ Registration successful');
+
       return true;
-    
-    } on DioException catch (e) {
-      final errorMessage = e.response?.data?['detail'] ?? 'Registration failed';
-      state = state.copyWith(
-        isLoading: false,
-        error: errorMessage.toString(),
-      );
-      print('❌ Registration failed: $errorMessage');
-      return false;
-    
     } catch (e) {
-      state = state.copyWith(
-        isLoading: false,
-        error: 'Registration failed: ${e.toString()}',
-      );
-      print('❌ Registration error: $e');
+      state = state.copyWith(error: e.toString());
       return false;
     }
   }
 
-  /// Logout user
+  // ----------------------------
+  // LOGOUT
+  // ----------------------------
   Future<void> logout() async {
     try {
-      // Call logout endpoint to blacklist token
-      if (state.accessToken != null) {
-        try {
-          await apiClient.post(
-            '/api/v1/auth/logout',
-            options: Options(
-              headers: {
-                'Authorization': 'Bearer ${state.accessToken}',
-              },
-            ),
-          );
-        } catch (e) {
-          print('Logout API call failed: $e (continuing with local logout)');
-        }
-      }
-      
-      // Clear tokens
-      await apiClient.clearAuthToken();
-      _authBox = await Hive.openBox<String>('auth');
-      await _authBox?.clear();
-      
-      // Cancel timers
       _refreshTimer?.cancel();
-      _expirationCheckTimer?.cancel();
-      
-      // Clear state
+      _expirationTimer?.cancel();
+
+      await apiClient.clearAuthTokens();
+
+      final box = await _box;
+      await box.clear();
+
       state = AuthState();
-      
-      print('✅ Logged out successfully');
     } catch (e) {
-      print('❌ Logout error: $e');
-      rethrow;
+      print('Logout error: $e');
     }
   }
 
   @override
   void dispose() {
     _refreshTimer?.cancel();
-    _expirationCheckTimer?.cancel();
+    _expirationTimer?.cancel();
     super.dispose();
   }
 }
 
-/// Create the auth provider
-final authProvider = StateNotifierProvider<AuthNotifier, AuthState>((ref) {
-  final apiClient = ref.watch(apiClientProvider);
-  return AuthNotifier(apiClient);
+// ----------------------------
+// PROVIDERS
+// ----------------------------
+final authProvider =
+    StateNotifierProvider<AuthNotifier, AuthState>((ref) {
+  final api = ref.watch(apiClientProvider);
+  return AuthNotifier(api);
 });
 
-/// Selector providers
 final isAuthenticatedProvider = Provider((ref) {
   final auth = ref.watch(authProvider);
-  return auth.accessToken != null && !(auth.isTokenExpired);
-});
-
-final currentUserProvider = Provider((ref) {
-  final auth = ref.watch(authProvider);
-  return auth.user;
-});
-
-final isTokenRefreshingProvider = Provider((ref) {
-  final auth = ref.watch(authProvider);
-  final expiresAt = auth.tokenExpiresAt;
-  
-  if (expiresAt == null) return false;
-  
-  final now = DateTime.now();
-  final minutesUntilExpire = expiresAt.difference(now).inMinutes;
-  
-  return minutesUntilExpire <= 5; // Will refresh soon
+  return auth.accessToken != null;
 });

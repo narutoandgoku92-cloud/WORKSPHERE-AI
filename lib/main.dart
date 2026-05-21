@@ -13,7 +13,6 @@ import 'screens/gps_verification_screen.dart';
 import 'screens/profile_screen.dart';
 import 'screens/settings_screen.dart';
 import 'providers/auth_provider.dart';
-import 'providers/profile_provider.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -22,7 +21,7 @@ void main() async {
 }
 
 class MyApp extends ConsumerWidget {
-  const MyApp({Key? key}) : super(key: key);
+  const MyApp({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -133,7 +132,7 @@ class MyApp extends ConsumerWidget {
         outlinedButtonTheme: OutlinedButtonThemeData(
           style: OutlinedButton.styleFrom(
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-            side: BorderSide(color: lightColorScheme.primary.withOpacity(0.85)),
+            side: BorderSide(color: lightColorScheme.primary.withValues(alpha: 0.85)),
             foregroundColor: lightColorScheme.primary,
           ),
         ),
@@ -197,7 +196,7 @@ class MyApp extends ConsumerWidget {
         outlinedButtonTheme: OutlinedButtonThemeData(
           style: OutlinedButton.styleFrom(
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-            side: BorderSide(color: darkColorScheme.primary.withOpacity(0.85)),
+            side: BorderSide(color: darkColorScheme.primary.withValues(alpha:0.85)),
             foregroundColor: darkColorScheme.onPrimary,
           ),
         ),

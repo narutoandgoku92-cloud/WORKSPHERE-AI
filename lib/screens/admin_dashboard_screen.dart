@@ -7,7 +7,7 @@ import '../providers/auth_provider.dart';
 import '../providers/attendance_provider.dart';
 
 class AdminDashboardScreen extends ConsumerWidget {
-  const AdminDashboardScreen({Key? key}) : super(key: key);
+  const AdminDashboardScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
