@@ -1,254 +1,275 @@
-﻿// lib/services/api_client.dart
-
-import 'dart:async';
-import 'dart:developer';
-
+﻿import 'dart:developer';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:internet_connection_checker/internet_connection_checker.dart';
+import 'package:hive_flutter/hive_flutter.dart';
 
 import '../config/app_config.dart';
 
 class ApiClient {
-  static final String baseUrl = AppConfig.apiBaseUrl;
-  final Dio _dio;
-  final FlutterSecureStorage _secureStorage = const FlutterSecureStorage();
-  String? _currentAccessToken;
-  String? _currentRefreshToken;
+  late final Dio _dio;
+  late final FlutterSecureStorage _secureStorage;
+  late final Box<String>? _hiveBox;
+  bool _isWebPlatform = false;
+
+  String? _accessToken;
+  String? _refreshTokenValue;
   bool _refreshing = false;
 
-  ApiClient()
-      : _dio = Dio(
-          BaseOptions(
-            baseUrl: baseUrl,
-            connectTimeout: AppConfig.apiTimeout,
-            receiveTimeout: AppConfig.apiTimeout,
-            sendTimeout: AppConfig.apiTimeout,
-            contentType: Headers.jsonContentType,
-            responseType: ResponseType.json,
-          ),
-        ) {
+  static const String _accessTokenKey = 'access_token';
+  static const String _refreshTokenKey = 'refresh_token';
+
+  ApiClient() {
+    _isWebPlatform = kIsWeb;
+    _secureStorage = const FlutterSecureStorage();
+    
+    _dio = Dio(
+      BaseOptions(
+        baseUrl: AppConfig.apiBaseUrl,
+        connectTimeout: AppConfig.apiTimeout,
+        receiveTimeout: AppConfig.apiTimeout,
+        sendTimeout: AppConfig.apiTimeout,
+        contentType: Headers.jsonContentType,
+        responseType: ResponseType.json,
+      ),
+    );
+
+    log('🔧 ApiClient initialized for ${_isWebPlatform ? 'WEB' : 'MOBILE'} platform');
+    log('📍 Base URL: ${AppConfig.apiBaseUrl}');
+
     _dio.interceptors.add(
       InterceptorsWrapper(
         onRequest: (options, handler) async {
+          log('📤 REQUEST: ${options.method} ${options.path}');
+
           if (!await _hasNetworkConnection()) {
+            log('❌ NO NETWORK CONNECTION');
             return handler.reject(
               DioException(
                 requestOptions: options,
-                error: 'No network connection',
+                error: 'No internet connection',
                 type: DioExceptionType.connectionError,
               ),
             );
           }
 
-          final accessToken = _currentAccessToken ?? await _readToken(_accessTokenKey);
-          if (accessToken != null && accessToken.isNotEmpty) {
-            options.headers['Authorization'] = 'Bearer $accessToken';
+          final token = _accessToken ?? await _read(_accessTokenKey);
+
+          if (token != null && token.isNotEmpty) {
+            options.headers['Authorization'] = 'Bearer $token';
+            log('✓ Authorization header added (token length: ${token.length})');
+          } else {
+            log('⚠️ No access token available');
           }
 
-          return handler.next(options);
+          handler.next(options);
         },
-        onError: (error, handler) async {
-          final requestOptions = error.requestOptions;
-          final statusCode = error.response?.statusCode;
 
-          if (_isUnauthorized(statusCode) && !requestOptions.extra.containsKey('refresh_attempted')) {
+        onError: (error, handler) async {
+          final status = error.response?.statusCode;
+          final req = error.requestOptions;
+
+          log('❌ ERROR: ${req.method} ${req.path}');
+          log('   Status: $status');
+          log('   Error: ${error.error}');
+          log('   Response: ${error.response?.data}');
+
+          final isUnauthorized = status == 401 || status == 403;
+
+          if (isUnauthorized && !_refreshing) {
+            log('🔄 Attempting token refresh...');
             try {
-              await _refreshTokens();
-              requestOptions.extra['refresh_attempted'] = true;
-              final response = await _retryRequest(requestOptions);
-              return handler.resolve(response);
+              await _refreshAuthToken();
+              final retry = await _retry(req);
+              log('✓ Request retry successful');
+              return handler.resolve(retry);
             } catch (e) {
+              log('❌ Token refresh failed: $e');
               await clearAuthTokens();
             }
           }
 
-          if (_shouldRetry(error) && _retryCount(requestOptions) < AppConfig.maxRetryAttempts) {
-            final retryResponse = await _retryRequest(requestOptions);
-            return handler.resolve(retryResponse);
-          }
-
-          return handler.next(error);
+          handler.next(error);
         },
       ),
     );
   }
 
-  static const String _accessTokenKey = 'access_token';
-  static const String _refreshTokenKey = 'refresh_token';
-
+  // =========================
+  // NETWORK CHECK
+  // =========================
   Future<bool> _hasNetworkConnection() async {
-    final connectivityResults = await Connectivity().checkConnectivity();
-    if (connectivityResults.isEmpty || connectivityResults.contains(ConnectivityResult.none)) {
-      return false;
-    }
-    return await InternetConnectionChecker().hasConnection;
+    final result = await Connectivity().checkConnectivity();
+    if (result.contains(ConnectivityResult.none)) return false;
+
+    return InternetConnectionChecker().hasConnection;
   }
 
-  bool _isUnauthorized(int? statusCode) {
-    return statusCode == 401 || statusCode == 403;
-  }
-
-  bool _shouldRetry(DioException error) {
-    return error.type == DioExceptionType.connectionTimeout ||
-        error.type == DioExceptionType.sendTimeout ||
-        error.type == DioExceptionType.receiveTimeout ||
-        error.type == DioExceptionType.connectionError;
-  }
-
-  int _retryCount(RequestOptions options) {
-    return (options.extra['retry_count'] as int?) ?? 0;
-  }
-
-  Future<String?> _readToken(String key) async {
+  // =========================
+  // TOKEN STORAGE - Platform aware
+  // =========================
+  Future<String?> _read(String key) async {
     try {
-      return await _secureStorage.read(key: key);
+      if (_isWebPlatform) {
+        // Web: use Hive only
+        _hiveBox ??= await Hive.openBox<String>('auth_web');
+        return _hiveBox?.get(key);
+      } else {
+        // Mobile: use FlutterSecureStorage
+        return await _secureStorage.read(key: key);
+      }
     } catch (e) {
-      log('Secure storage read failed: $e', name: 'ApiClient');
-      return null;
+      log("❌ Storage read error for $key: $e");
+      // Fallback to Hive
+      try {
+        _hiveBox ??= await Hive.openBox<String>('auth_mobile');
+        return _hiveBox?.get(key);
+      } catch (e2) {
+        log("❌ Hive fallback also failed: $e2");
+        return null;
+      }
     }
   }
 
-  Future<void> _writeToken(String key, String? value) async {
-    if (value == null) return;
+  Future<void> _write(String key, String value) async {
     try {
-      await _secureStorage.write(key: key, value: value);
+      if (_isWebPlatform) {
+        // Web: use Hive only
+        _hiveBox ??= await Hive.openBox<String>('auth_web');
+        await _hiveBox?.put(key, value);
+      } else {
+        // Mobile: use FlutterSecureStorage
+        await _secureStorage.write(key: key, value: value);
+      }
     } catch (e) {
-      log('Secure storage write failed: $e', name: 'ApiClient');
+      log("❌ Storage write error for $key: $e");
+      // Fallback to Hive
+      try {
+        _hiveBox ??= await Hive.openBox<String>('auth_mobile');
+        await _hiveBox?.put(key, value);
+      } catch (e2) {
+        log("❌ Hive fallback also failed: $e2");
+      }
     }
   }
 
-  Future<void> setAuthToken(String accessToken) async {
-    _currentAccessToken = accessToken;
-    await _writeToken(_accessTokenKey, accessToken);
-  }
+  Future<void> setAuthTokens({
+    required String accessToken,
+    required String refreshToken,
+  }) async {
+    _accessToken = accessToken;
+    _refreshTokenValue = refreshToken;
 
-  Future<void> clearAuthToken() async {
-    _currentAccessToken = null;
-    try {
-      await _secureStorage.delete(key: _accessTokenKey);
-    } catch (e) {
-      log('Secure storage delete failed: $e', name: 'ApiClient');
-    }
-  }
-
-  Future<void> setAuthTokens({required String accessToken, required String refreshToken}) async {
-    _currentAccessToken = accessToken;
-    _currentRefreshToken = refreshToken;
-    await _writeToken(_accessTokenKey, accessToken);
-    await _writeToken(_refreshTokenKey, refreshToken);
+    await _write(_accessTokenKey, accessToken);
+    await _write(_refreshTokenKey, refreshToken);
   }
 
   Future<void> clearAuthTokens() async {
-    _currentAccessToken = null;
-    _currentRefreshToken = null;
-    try {
-      await _secureStorage.delete(key: _accessTokenKey);
-      await _secureStorage.delete(key: _refreshTokenKey);
-    } catch (e) {
-      log('Secure storage delete failed: $e', name: 'ApiClient');
-    }
+    _accessToken = null;
+    _refreshTokenValue = null;
+
+    await _secureStorage.delete(key: _accessTokenKey);
+    await _secureStorage.delete(key: _refreshTokenKey);
   }
 
   Future<void> initialize() async {
-    _currentAccessToken = await _readToken(_accessTokenKey);
-    _currentRefreshToken = await _readToken(_refreshTokenKey);
+    _accessToken = await _read(_accessTokenKey);
+    _refreshTokenValue = await _read(_refreshTokenKey);
   }
 
   Future<bool> hasAccessToken() async {
-    if (_currentAccessToken != null && _currentAccessToken!.isNotEmpty) {
-      return true;
-    }
-    final stored = await _readToken(_accessTokenKey);
-    return stored != null && stored.isNotEmpty;
+    return (_accessToken ?? await _read(_accessTokenKey))?.isNotEmpty ?? false;
   }
 
-  Future<Response> _retryRequest(RequestOptions requestOptions) async {
-    final attempt = _retryCount(requestOptions) + 1;
-    final latestAccessToken = await _readToken(_accessTokenKey);
-    final headers = Map<String, dynamic>.from(requestOptions.headers);
-    if (latestAccessToken != null && latestAccessToken.isNotEmpty) {
-      headers['Authorization'] = 'Bearer $latestAccessToken';
-    }
-
-    final options = Options(
-      method: requestOptions.method,
-      headers: headers,
-      responseType: requestOptions.responseType,
-      contentType: requestOptions.contentType,
-      extra: {
-        ...requestOptions.extra,
-        'retry_count': attempt,
-      },
-      followRedirects: requestOptions.followRedirects,
-      validateStatus: requestOptions.validateStatus,
-    );
-
-    await Future<void>.delayed(Duration(milliseconds: AppConfig.retryBaseDelayMs * attempt));
-    return _dio.request(
-      requestOptions.path,
-      data: requestOptions.data,
-      queryParameters: requestOptions.queryParameters,
-      options: options,
-    );
-  }
-
-  Future<void> _refreshTokens() async {
+  // =========================
+  // AUTH REFRESH
+  // =========================
+  Future<void> _refreshAuthToken() async {
     if (_refreshing) return;
     _refreshing = true;
+
     try {
-      final refreshToken = await _readToken(_refreshTokenKey);
-      if (refreshToken == null || refreshToken.isEmpty) {
-        throw StateError('No refresh token available');
+      final refresh = await _read(_refreshTokenKey);
+
+      if (refresh == null) {
+        throw Exception("No refresh token");
       }
 
-      final response = await _dio.post(
-        '/auth/refresh',
-        data: {'refresh_token': refreshToken},
+      final res = await _dio.post(
+        '/auth/refresh',  // ✓ FIXED: baseUrl already includes /api/v1
+        data: {'refresh_token': refresh},
       );
 
-      final accessToken = response.data['access_token'] as String?;
-      final newRefreshToken = response.data['refresh_token'] as String?;
-      if (accessToken == null || newRefreshToken == null) {
-        throw StateError('Refresh response did not contain tokens');
+      final newAccess = res.data['access_token'];
+      final newRefresh = res.data['refresh_token'];
+
+      if (newAccess == null || newRefresh == null) {
+        throw Exception("Invalid refresh response");
       }
 
-      await setAuthTokens(accessToken: accessToken, refreshToken: newRefreshToken);
+      await setAuthTokens(
+        accessToken: newAccess,
+        refreshToken: newRefresh,
+      );
     } finally {
       _refreshing = false;
     }
   }
 
-  Future<Response> post(
-    String path, {
-    Map<String, dynamic>? data,
-    Map<String, dynamic>? queryParameters,
-    Options? options,
-  }) async {
-    return _dio.post(path, data: data, queryParameters: queryParameters, options: options);
+  // =========================
+  // RETRY REQUEST
+  // =========================
+  Future<Response> _retry(RequestOptions request) async {
+    final token = await _read(_accessTokenKey);
+
+    final headers = Map<String, dynamic>.from(request.headers);
+
+    if (token != null) {
+      headers['Authorization'] = 'Bearer $token';
+    }
+
+    return _dio.request(
+      request.path,
+      data: request.data,
+      queryParameters: request.queryParameters,
+      options: Options(
+        method: request.method,
+        headers: headers,
+      ),
+    );
   }
 
-  Future<Response> get(
-    String path, {
-    Map<String, dynamic>? queryParameters,
-    Options? options,
-  }) async {
-    return _dio.get(path, queryParameters: queryParameters, options: options);
+  // =========================
+  // HTTP METHODS
+  // =========================
+  Future<Response> post(String path, {dynamic data}) {
+    return _dio.post(path, data: data);
   }
 
-  Future<Response> put(
-    String path, {
-    Map<String, dynamic>? data,
-    Options? options,
-  }) async {
-    return _dio.put(path, data: data, options: options);
+  Future<Response> get(String path) {
+    return _dio.get(path);
   }
 
-  Future<Response> delete(
-    String path, {
-    Options? options,
-  }) async {
-    return _dio.delete(path, options: options);
+  Future<Response> put(String path, {dynamic data}) {
+    return _dio.put(path, data: data);
+  }
+
+  Future<Response> delete(String path) {
+    return _dio.delete(path);
+  }
+
+  // =========================
+  // HEALTH CHECK
+  // =========================
+  Future<bool> healthCheck() async {
+    try {
+      final response = await _dio.get('/health');
+      return response.statusCode == 200;
+    } catch (e) {
+      log('❌ Health check failed: $e');
+      return false;
+    }
   }
 }

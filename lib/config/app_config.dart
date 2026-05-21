@@ -1,89 +1,94 @@
-﻿// lib/config/app_config.dart
-
-import 'package:flutter/foundation.dart';
+﻿import 'package:flutter/foundation.dart';
 
 class AppConfig {
   static const String appName = 'WorkSphere AI';
   static const String appVersion = '1.0.0';
 
   static const String environment =
-      String.fromEnvironment('ENVIRONMENT', defaultValue: 'development');
+      String.fromEnvironment(
+        'ENVIRONMENT',
+        defaultValue: 'development',
+      );
 
-  // ✅ FIX: REMOVE /api/v1 from base URL (prevents duplication bug)
   static const String _apiBaseUrl =
-      "https://worksphere-ai.onrender.com";
+      String.fromEnvironment(
+        'API_BASE_URL',
+        defaultValue: '',
+      );
 
-  static const String _defaultApiBaseUrl =
-      String.fromEnvironment('API_DEFAULT_BASE_URL', defaultValue: '');
-
-  static final Duration apiTimeout =
-      Duration(seconds: int.fromEnvironment('API_TIMEOUT_SECONDS', defaultValue: 30));
+  static const Duration apiTimeout =
+      Duration(
+        seconds: int.fromEnvironment(
+          'API_TIMEOUT_SECONDS',
+          defaultValue: 30,
+        ),
+      );
 
   static const int maxRetryAttempts = 3;
   static const int maxRefreshRetries = 1;
   static const int retryBaseDelayMs = 500;
 
+  // =========================
+  // FEATURE FLAGS
+  // =========================
+  static const bool enableFaceRecognition = true;
+  static const bool enableGpsVerification = true;
+  static const bool enableNotifications = true;
+  static const bool requireBiometricAuth = false;
+
   static String get apiBaseUrl {
-    if (_apiBaseUrl.isNotEmpty) {
-      return _normalizeApiBaseUrl(_apiBaseUrl);
+    final base = _apiBaseUrl.isNotEmpty
+        ? _apiBaseUrl
+        : _getDefaultBaseUrl();
+
+    return _normalizeApiBaseUrl(base);
+  }
+
+  static String _getDefaultBaseUrl() {
+    // Production always uses Render
+    if (isProduction) {
+      return "https://worksphere-ai.onrender.com";
     }
 
-    if (_defaultApiBaseUrl.isNotEmpty) {
-      return _normalizeApiBaseUrl(_defaultApiBaseUrl);
-    }
-
-    if (environment == 'production' || environment == 'staging') {
-      throw StateError(
-        'API_BASE_URL must be provided with --dart-define=API_BASE_URL for staging and production builds.',
-      );
-    }
-
+    // Flutter web
     if (kIsWeb) {
-      throw StateError(
-        'Web builds must provide API_BASE_URL via --dart-define=API_BASE_URL',
-      );
+      return "https://worksphere-ai.onrender.com";
     }
 
+    // Android emulator
     if (defaultTargetPlatform == TargetPlatform.android) {
-      return _normalizeApiBaseUrl('http://10.0.2.2:8000');
+      return "http://10.0.2.2:8000";
     }
 
-    return _normalizeApiBaseUrl('http://127.0.0.1:8000');
+    // iOS simulator / desktop
+    return "http://127.0.0.1:8000";
   }
 
   static String _normalizeApiBaseUrl(String url) {
     final sanitized = url.trim();
-    final normalized = sanitized.endsWith('/')
-        ? sanitized.substring(0, sanitized.length - 1)
-        : sanitized;
 
-    final uri = Uri.parse(normalized);
+    final uri = Uri.tryParse(sanitized);
 
-    if (isProduction && uri.scheme != 'https') {
-      throw StateError('Production API_BASE_URL must use https://');
+    if (uri == null || uri.scheme.isEmpty) {
+      throw StateError(
+        'Invalid API_BASE_URL: $sanitized',
+      );
     }
 
-    // ✅ FIX: Always enforce single /api/v1 only here
-    return '$normalized/api/v1';
+    if (isProduction && uri.scheme != 'https') {
+      throw StateError(
+        'Production API_BASE_URL must use https://',
+      );
+    }
+
+    final base = sanitized.replaceAll(
+      RegExp(r'(/api/v1)+$'),
+      '',
+    );
+
+    return '$base/api/v1';
   }
 
-  static bool get isProduction => environment == 'production';
-  static bool get isStaging => environment == 'staging';
-  static bool get requireSecureTransport => isProduction || isStaging;
-
-  static const bool enableFaceRecognition = true;
-  static const bool enableGpsVerification = true;
-  static const bool enableNotifications = true;
-  static const bool enableAnalytics = true;
-
-  static const int sessionTimeoutMinutes = 60;
-  static const bool requireBiometricAuth = false;
-
-  static const double defaultBorderRadius = 8.0;
-  static const Duration defaultAnimationDuration =
-      Duration(milliseconds: 300);
-
-  static const double gpsAccuracyThreshold = 100.0;
-  static const Duration faceRecognitionTimeout =
-      Duration(seconds: 30);
+  static bool get isProduction =>
+      environment == 'production';
 }
