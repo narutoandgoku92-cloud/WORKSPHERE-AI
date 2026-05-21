@@ -7,7 +7,7 @@ class AppConfig {
   static const String appVersion = '1.0.0';
 
   static const String environment = String.fromEnvironment('ENVIRONMENT', defaultValue: 'development');
-  static const String _apiBaseUrl = String.fromEnvironment('API_BASE_URL', defaultValue: '');
+  static const String _apiBaseUrl = "https://worksphere-ai.onrender.com/api/v1";
   static const String _defaultApiBaseUrl = String.fromEnvironment('API_DEFAULT_BASE_URL', defaultValue: '');
 
   static final Duration apiTimeout = Duration(seconds: int.fromEnvironment('API_TIMEOUT_SECONDS', defaultValue: 30));

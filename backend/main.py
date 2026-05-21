@@ -1,6 +1,7 @@
 # backend/main.py - OptiWork AI FastAPI Backend
 # Entry point and application initialization
 
+
 from fastapi import FastAPI, Request, status
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
