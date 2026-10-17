@@ -53,7 +53,8 @@ async def get_admin_dashboard(
                 "check_out_time": log.check_out_time,
                 "check_in_verified": log.check_in_verified,
                 "gps_verified": log.gps_verified,
-                "check_in_method": log.check_in_method
+                "check_in_method": log.check_in_method,
+                "created_at": log.created_at,
             })
     
     # Create dashboard

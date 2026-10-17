@@ -1,9 +1,9 @@
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import 'package:work_sphere_ai/theme/glassmorphism.dart';
+import 'package:work_sphere_ai/config/app_config.dart';
 import '../providers/auth_provider.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
@@ -25,20 +25,38 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   @override
   void initState() {
     super.initState();
+
+    debugPrint('========== LOGIN SCREEN INITIALIZED ==========');
+    debugPrint('API BASE URL: ${AppConfig.apiBaseUrl}');
+    debugPrint('ENVIRONMENT: ${AppConfig.environment}');
+
     _checkBackendHealth();
   }
 
   Future<void> _checkBackendHealth() async {
     if (!mounted) return;
 
-    setState(() => _isCheckingBackend = true);
+    setState(() {
+      _isCheckingBackend = true;
+    });
+
+    debugPrint('========== BACKEND HEALTH CHECK ==========');
+    debugPrint('Starting backend health check...');
+    debugPrint('API BASE URL: ${AppConfig.apiBaseUrl}');
 
     bool isHealthy = false;
 
     try {
       final apiClient = ref.read(apiClientProvider);
+
+      debugPrint('API CLIENT OBTAINED. Sending health request...');
+
       isHealthy = await apiClient.healthCheck();
-    } catch (_) {
+
+      debugPrint('HEALTH CHECK RESULT: $isHealthy');
+    } catch (e, stackTrace) {
+      debugPrint('HEALTH CHECK ERROR: $e');
+      debugPrint('$stackTrace');
       isHealthy = false;
     }
 
@@ -48,6 +66,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       _backendHealthy = isHealthy;
       _isCheckingBackend = false;
     });
+
+    debugPrint('BACKEND HEALTHY: $_backendHealthy');
+    debugPrint('LOGIN BUTTON ENABLED: ${!_isLoading && _backendHealthy}');
+    debugPrint('==========================================');
   }
 
   @override
@@ -58,6 +80,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   }
 
   Future<void> _handleLogin() async {
+    debugPrint('SIGN IN BUTTON PRESSED');
+
     if (_emailController.text.trim().isEmpty ||
         _passwordController.text.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -79,27 +103,42 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       return;
     }
 
-    setState(() => _isLoading = true);
+    setState(() {
+      _isLoading = true;
+    });
 
     bool success = false;
 
     try {
-      success = await ref.read(authProvider.notifier).login(
+      debugPrint('LOGIN REQUEST STARTED');
+
+      success = await ref
+          .read(authProvider.notifier)
+          .login(
             _emailController.text.trim(),
             _passwordController.text,
           );
-    } catch (_) {
+
+      debugPrint('LOGIN RESULT: $success');
+    } catch (e, stackTrace) {
+      debugPrint('LOGIN ERROR: $e');
+      debugPrint('$stackTrace');
       success = false;
     }
 
     if (!mounted) return;
 
-    setState(() => _isLoading = false);
+    setState(() {
+      _isLoading = false;
+    });
 
     if (success) {
+      debugPrint('LOGIN SUCCESSFUL. OPENING DASHBOARD.');
       context.go('/dashboard');
     } else {
       final error = ref.read(authProvider).error;
+
+      debugPrint('LOGIN FAILED: ${error ?? 'Unknown error'}');
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -111,22 +150,21 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
+    debugPrint('LOGIN SCREEN BUILD CALLED');
+
     return Scaffold(
       body: Stack(
         fit: StackFit.expand,
         children: [
-          // Background image from the second design.
           Image.asset(
             'assets/AnalyticsInsights_HeaderImage_1000x750-768x576.jpg',
             fit: BoxFit.cover,
             errorBuilder: (context, error, stackTrace) {
-              return Container(
-                color: const Color(0xFF102A35),
-              );
+              debugPrint('BACKGROUND IMAGE ERROR: $error');
+              return Container(color: const Color(0xFF102A35));
             },
           ),
 
-          // Dark overlay for readable text.
           Container(
             color: Colors.black.withOpacity(0.20),
           ),
@@ -172,7 +210,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
                       const SizedBox(height: 25),
 
-                      // Glassmorphism card.
                       GlassContainer(
                         width: double.infinity,
                         child: Column(
@@ -199,7 +236,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
                             const SizedBox(height: 22),
 
-                            // Backend connection status.
                             if (!_backendHealthy)
                               Container(
                                 padding: const EdgeInsets.all(12),
@@ -258,15 +294,12 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                             if (!_backendHealthy)
                               const SizedBox(height: 20),
 
-                            // Email field.
                             TextField(
                               controller: _emailController,
                               keyboardType: TextInputType.emailAddress,
                               textInputAction: TextInputAction.next,
                               enabled: !_isLoading && _backendHealthy,
-                              style: const TextStyle(
-                                color: Colors.white,
-                              ),
+                              style: const TextStyle(color: Colors.white),
                               decoration: _inputDecoration(
                                 hint: 'Email address',
                                 icon: Icons.email_outlined,
@@ -275,7 +308,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
                             const SizedBox(height: 18),
 
-                            // Password field.
                             TextField(
                               controller: _passwordController,
                               obscureText: _obscurePassword,
@@ -286,9 +318,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                                   _handleLogin();
                                 }
                               },
-                              style: const TextStyle(
-                                color: Colors.white,
-                              ),
+                              style: const TextStyle(color: Colors.white),
                               decoration: _inputDecoration(
                                 hint: 'Password',
                                 icon: Icons.lock_outline_rounded,
@@ -298,9 +328,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                                       ? 'Show password'
                                       : 'Hide password',
                                   onPressed: () {
+                                    debugPrint('PASSWORD VISIBILITY PRESSED');
                                     setState(() {
-                                      _obscurePassword =
-                                          !_obscurePassword;
+                                      _obscurePassword = !_obscurePassword;
                                     });
                                   },
                                   icon: Icon(
@@ -330,20 +360,20 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
                             const SizedBox(height: 8),
 
-                            // Actual backend login action.
                             SizedBox(
                               height: 53,
                               child: ElevatedButton(
-                                onPressed: (!_isLoading && _backendHealthy)
-                                    ? _handleLogin
-                                    : null,
+                                onPressed:
+                                    (!_isLoading && _backendHealthy)
+                                        ? _handleLogin
+                                        : null,
                                 style: ElevatedButton.styleFrom(
-                                  backgroundColor:
-                                      const Color(0xFF14B8A6),
+                                  backgroundColor: const Color(0xFF60A5FA),
                                   foregroundColor: Colors.white,
                                   disabledBackgroundColor:
-                                      Colors.white24,
-                                  disabledForegroundColor: Colors.white60,
+                                      const Color(0xFFBFDBFE),
+                                  disabledForegroundColor:
+                                      const Color(0xFF64748B),
                                   elevation: 0,
                                   shape: RoundedRectangleBorder(
                                     borderRadius: BorderRadius.circular(13),
@@ -370,7 +400,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
                             const SizedBox(height: 18),
 
-                            // Registration navigation.
                             Row(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
@@ -383,8 +412,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                                     ),
                                   ),
                                 ),
+
                                 TextButton(
                                   onPressed: () {
+                                    debugPrint('CREATE ACCOUNT PRESSED');
                                     context.push('/register');
                                   },
                                   child: const Text(
@@ -422,20 +453,14 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     );
   }
 
-  // Shared styling for the email and password fields.
   InputDecoration _inputDecoration({
     required String hint,
     required IconData icon,
   }) {
     return InputDecoration(
       hintText: hint,
-      hintStyle: const TextStyle(
-        color: Colors.white70,
-      ),
-      prefixIcon: Icon(
-        icon,
-        color: Colors.white70,
-      ),
+      hintStyle: const TextStyle(color: Colors.white70),
+      prefixIcon: Icon(icon, color: Colors.white70),
       filled: true,
       fillColor: Colors.white.withOpacity(0.12),
       contentPadding: const EdgeInsets.symmetric(

@@ -1,6 +1,7 @@
+
 # backend/core/security.py - Security utilities and authentication
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional, Dict, Any, List
 from jose import JWTError, jwt
 from pydantic import BaseModel
@@ -37,45 +38,48 @@ class TokenBlacklist:
             logger.error(f"Token blacklist read failed: {e}")
             return False
 
+
 # ============================================================================
 # PASSWORD HASHING
 # ============================================================================
 
 def hash_password(password: str, rounds: int = 12) -> str:
-    """Hash password using bcrypt"""
+    """Hash password using bcrypt."""
     if len(password) < 8:
         raise ValueError("Password must be at least 8 characters")
+
     salt = bcrypt.gensalt(rounds=rounds)
-    hashed = bcrypt.hashpw(password.encode('utf-8'), salt)
-    return hashed.decode('utf-8')
+    hashed = bcrypt.hashpw(password.encode("utf-8"), salt)
+    return hashed.decode("utf-8")
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    """Verify password against hash"""
+    """Verify password against hash."""
     try:
         return bcrypt.checkpw(
-            plain_password.encode('utf-8'),
-            hashed_password.encode('utf-8')
+            plain_password.encode("utf-8"),
+            hashed_password.encode("utf-8")
         )
     except Exception as e:
         logger.error(f"Password verification error: {e}")
         return False
+
 
 # ============================================================================
 # JWT TOKEN MANAGEMENT
 # ============================================================================
 
 class TokenPayload(BaseModel):
-    """JWT token payload"""
+    """JWT token payload."""
+
     sub: str
     type: str
     org_id: str
-    role: str
+    role: Optional[str] = None
     permissions: List[str] = []
     jti: str
     iat: int
     exp: int
-
 
 def _decode_token(token: str) -> Optional[Dict[str, Any]]:
     try:
@@ -100,9 +104,16 @@ def create_access_token(
     permissions: List[str] = [],
     expires_delta: Optional[timedelta] = None
 ) -> str:
+    """Create an access token using timezone-aware UTC timestamps."""
+    now = datetime.now(timezone.utc)
+
     if expires_delta is None:
-        expires_delta = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
-    expire = datetime.utcnow() + expires_delta
+        expires_delta = timedelta(
+            minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES
+        )
+
+    expire = now + expires_delta
+
     payload = {
         "sub": user_id,
         "type": "access",
@@ -110,10 +121,15 @@ def create_access_token(
         "org_id": org_id,
         "role": role,
         "permissions": permissions,
-        "iat": int(datetime.utcnow().timestamp()),
+        "iat": int(now.timestamp()),
         "exp": int(expire.timestamp())
     }
-    return jwt.encode(payload, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
+
+    return jwt.encode(
+        payload,
+        settings.SECRET_KEY,
+        algorithm=settings.ALGORITHM
+    )
 
 
 def create_refresh_token(
@@ -121,27 +137,47 @@ def create_refresh_token(
     org_id: str,
     expires_delta: Optional[timedelta] = None
 ) -> str:
+    """Create a refresh token using timezone-aware UTC timestamps."""
+    now = datetime.now(timezone.utc)
+
     if expires_delta is None:
-        expires_delta = timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
-    expire = datetime.utcnow() + expires_delta
+        expires_delta = timedelta(
+            days=settings.REFRESH_TOKEN_EXPIRE_DAYS
+        )
+
+    expire = now + expires_delta
+
     payload = {
         "sub": user_id,
         "type": "refresh",
         "jti": str(uuid.uuid4()),
         "org_id": org_id,
-        "iat": int(datetime.utcnow().timestamp()),
+        "iat": int(now.timestamp()),
         "exp": int(expire.timestamp())
     }
-    return jwt.encode(payload, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
+
+    return jwt.encode(
+        payload,
+        settings.SECRET_KEY,
+        algorithm=settings.ALGORITHM
+    )
 
 
-def verify_token(token: str, expected_type: str) -> Optional[TokenPayload]:
+def verify_token(
+    token: str,
+    expected_type: str
+) -> Optional[TokenPayload]:
     payload = _decode_token(token)
+
     if not payload:
         return None
 
     if payload.get("type") != expected_type:
-        logger.warning(f"Token type mismatch: expected {expected_type} got {payload.get('type')}")
+        logger.warning(
+            "Token type mismatch: expected %s, got %s",
+            expected_type,
+            payload.get("type")
+        )
         return None
 
     try:
@@ -171,10 +207,12 @@ def create_tokens(
         role=role,
         permissions=permissions
     )
+
     refresh_token = create_refresh_token(
         user_id=user_id,
         org_id=org_id
     )
+
     return {
         "access_token": access_token,
         "refresh_token": refresh_token,
@@ -182,12 +220,13 @@ def create_tokens(
         "expires_in": settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60
     }
 
+
 # ============================================================================
 # SECURITY MANAGER
 # ============================================================================
 
 class SecurityManager:
-    """Centralized security operations"""
+    """Centralized security operations."""
 
     def __init__(self):
         self.blacklist = TokenBlacklist(settings.REDIS_URL)
@@ -207,18 +246,34 @@ class SecurityManager:
     ) -> Dict[str, str]:
         return create_tokens(user_id, org_id, role, permissions)
 
-    def verify_access_token(self, token: str) -> Optional[TokenPayload]:
+    def verify_access_token(
+        self,
+        token: str
+    ) -> Optional[TokenPayload]:
         payload = verify_access_token(token)
+
         if payload and self.blacklist.is_blacklisted(payload.jti):
-            logger.warning(f"Access token blacklisted: {payload.jti}")
+            logger.warning(
+                "Access token blacklisted: %s",
+                payload.jti
+            )
             return None
+
         return payload
 
-    def verify_refresh_token(self, token: str) -> Optional[TokenPayload]:
+    def verify_refresh_token(
+        self,
+        token: str
+    ) -> Optional[TokenPayload]:
         payload = verify_refresh_token(token)
+
         if payload and self.blacklist.is_blacklisted(payload.jti):
-            logger.warning(f"Refresh token blacklisted: {payload.jti}")
+            logger.warning(
+                "Refresh token blacklisted: %s",
+                payload.jti
+            )
             return None
+
         return payload
 
     def blacklist_token(self, token_id: str, ttl: int):
@@ -235,11 +290,14 @@ class SecurityManager:
     def generate_verification_token() -> str:
         return str(uuid.uuid4())
 
+
 # ============================================================================
 # DEVICE FINGERPRINTING
 # ============================================================================
 
 class DeviceFingerprint:
+    """Create and verify device fingerprints."""
+
     @staticmethod
     def create_fingerprint(
         device_id: str,
@@ -250,9 +308,15 @@ class DeviceFingerprint:
         user_agent: str,
         ip_address: str
     ) -> str:
+        fingerprint_string = (
+            f"{device_id}:{device_type}:{os_type}:{os_version}:"
+            f"{app_version}:{user_agent}:{ip_address}"
+        )
+
         import hashlib
-        fingerprint_string = f"{device_id}:{device_type}:{os_type}:{os_version}:{app_version}:{user_agent}:{ip_address}"
-        return hashlib.sha256(fingerprint_string.encode()).hexdigest()
+        return hashlib.sha256(
+            fingerprint_string.encode()
+        ).hexdigest()
 
     @staticmethod
     def verify_fingerprint(
@@ -262,78 +326,36 @@ class DeviceFingerprint:
     ) -> bool:
         return current_fingerprint == stored_fingerprint
 
+
 # ============================================================================
 # ENCRYPTION UTILITIES
 # ============================================================================
 
 class EncryptionManager:
+    """Handle sensitive data encryption."""
+
     from cryptography.fernet import Fernet
 
     @staticmethod
-    def encrypt_field(value: str, key: str = settings.SECRET_KEY) -> str:
-        f = EncryptionManager.Fernet(key.encode()[:32].ljust(32, b'0'))
-        return f.encrypt(value.encode()).decode()
-
-    @staticmethod
-    def decrypt_field(encrypted_value: str, key: str = settings.SECRET_KEY) -> str:
-        f = EncryptionManager.Fernet(key.encode()[:32].ljust(32, b'0'))
-        return f.decrypt(encrypted_value.encode()).decode()
-
-# ============================================================================
-# DEVICE FINGERPRINTING
-# ============================================================================
-
-class DeviceFingerprint:
-    """Create and verify device fingerprints for anti-fraud"""
-    
-    @staticmethod
-    def create_fingerprint(
-        device_id: str,
-        device_type: str,
-        os_type: str,
-        os_version: str,
-        app_version: str,
-        user_agent: str,
-        ip_address: str
+    def encrypt_field(
+        value: str,
+        key: str = settings.SECRET_KEY
     ) -> str:
-        """Create device fingerprint hash"""
-        import hashlib
-        
-        fingerprint_string = f"{device_id}:{device_type}:{os_type}:{os_version}:{app_version}:{user_agent}:{ip_address}"
-        fingerprint_hash = hashlib.sha256(fingerprint_string.encode()).hexdigest()
-        
-        return fingerprint_hash
-    
-    @staticmethod
-    def verify_fingerprint(
-        current_fingerprint: str,
-        stored_fingerprint: str,
-        tolerance: int = 2
-    ) -> bool:
-        """Verify device fingerprint (allows minor changes)"""
-        # Simple check - in production, use more sophisticated methods
-        return current_fingerprint == stored_fingerprint
-
-# ============================================================================
-# ENCRYPTION UTILITIES
-# ============================================================================
-
-class EncryptionManager:
-    """Handle sensitive data encryption"""
-    
-    from cryptography.fernet import Fernet
-    
-    @staticmethod
-    def encrypt_field(value: str, key: str = settings.SECRET_KEY) -> str:
-        """Encrypt sensitive field"""
-        f = Fernet(key.encode()[:32].ljust(32, b'0'))
+        f = EncryptionManager.Fernet(
+            key.encode()[:32].ljust(32, b"0")
+        )
         return f.encrypt(value.encode()).decode()
-    
+
     @staticmethod
-    def decrypt_field(encrypted_value: str, key: str = settings.SECRET_KEY) -> str:
-        """Decrypt sensitive field"""
-        f = Fernet(key.encode()[:32].ljust(32, b'0'))
+    def decrypt_field(
+        encrypted_value: str,
+        key: str = settings.SECRET_KEY
+    ) -> str:
+        f = EncryptionManager.Fernet(
+            key.encode()[:32].ljust(32, b"0")
+        )
         return f.decrypt(encrypted_value.encode()).decode()
+
 
 # ============================================================================
 # PERMISSION CHECKS
@@ -379,23 +401,24 @@ ROLE_PERMISSIONS = {
     ]
 }
 
+
 def has_permission(role: str, permission: str) -> bool:
-    """Check if role has permission"""
+    """Check whether a role has a permission."""
     permissions = ROLE_PERMISSIONS.get(role, [])
     return permission in permissions
 
+
 def get_role_permissions(role: str) -> list:
-    """Get all permissions for a role"""
     return ROLE_PERMISSIONS.get(role, [])
+
 
 # ============================================================================
 # RATE LIMITING KEY GENERATION
 # ============================================================================
 
 def get_rate_limit_key(user_id: str, endpoint: str) -> str:
-    """Generate rate limit key"""
     return f"ratelimit:{user_id}:{endpoint}"
 
+
 def get_ip_rate_limit_key(ip_address: str, endpoint: str) -> str:
-    """Generate IP-based rate limit key"""
     return f"ratelimit:ip:{ip_address}:{endpoint}"

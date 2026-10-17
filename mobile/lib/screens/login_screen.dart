@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import 'package:work_sphere_ai/theme/glassmorphism.dart';
+import 'package:work_sphere_ai/config/app_config.dart';
 import 'package:work_sphere_ai/providers/auth_provider.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
@@ -33,12 +34,23 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
     setState(() => _isCheckingBackend = true);
 
+    debugPrint('======================================');
+    debugPrint('WorkSphere AI - Backend Diagnostics');
+    debugPrint('API BASE URL: ${AppConfig.apiBaseUrl}');
+    debugPrint('ENVIRONMENT: ${AppConfig.environment}');
+    debugPrint('Starting backend health check...');
+    debugPrint('======================================');
+
     bool isHealthy = false;
 
     try {
       final apiClient = ref.read(apiClientProvider);
       isHealthy = await apiClient.healthCheck();
-    } catch (_) {
+
+      debugPrint('HEALTH CHECK RESULT: $isHealthy');
+    } catch (e, stackTrace) {
+      debugPrint('HEALTH CHECK ERROR: $e');
+      debugPrint('$stackTrace');
       isHealthy = false;
     }
 
@@ -48,6 +60,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       _backendHealthy = isHealthy;
       _isCheckingBackend = false;
     });
+
+    debugPrint(
+      'LOGIN BUTTON ENABLED: ${!_isLoading && _backendHealthy}',
+    );
   }
 
   @override
@@ -84,11 +100,15 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     bool success = false;
 
     try {
-      success = await ref.read(authProvider.notifier).login(
+      success = await ref
+          .read(authProvider.notifier)
+          .login(
             _emailController.text.trim(),
             _passwordController.text,
           );
-    } catch (_) {
+    } catch (e, stackTrace) {
+      debugPrint('LOGIN ERROR: $e');
+      debugPrint('$stackTrace');
       success = false;
     }
 
@@ -103,7 +123,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(error ?? 'Login failed. Please try again.'),
+          content: Text(
+            error ?? 'Login failed. Please try again.',
+          ),
         ),
       );
     }
@@ -115,18 +137,17 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       body: Stack(
         fit: StackFit.expand,
         children: [
-          // Background image from the second design.
           Image.asset(
             'assets/AnalyticsInsights_HeaderImage_1000x750-768x576.jpg',
             fit: BoxFit.cover,
             errorBuilder: (context, error, stackTrace) {
+              debugPrint('BACKGROUND IMAGE ERROR: $error');
               return Container(
                 color: const Color(0xFF102A35),
               );
             },
           ),
 
-          // Dark overlay for readable text.
           Container(
             color: Colors.black.withOpacity(0.20),
           ),
@@ -136,7 +157,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
               child: SingleChildScrollView(
                 padding: const EdgeInsets.all(16),
                 child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 400),
+                  constraints: const BoxConstraints(
+                    maxWidth: 400,
+                  ),
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -172,7 +195,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
                       const SizedBox(height: 25),
 
-                      // Glassmorphism card.
                       GlassContainer(
                         width: double.infinity,
                         child: Column(
@@ -199,7 +221,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
                             const SizedBox(height: 22),
 
-                            // Backend connection status.
                             if (!_backendHealthy)
                               Container(
                                 padding: const EdgeInsets.all(12),
@@ -258,7 +279,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                             if (!_backendHealthy)
                               const SizedBox(height: 20),
 
-                            // Email field.
                             TextField(
                               controller: _emailController,
                               keyboardType: TextInputType.emailAddress,
@@ -275,7 +295,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
                             const SizedBox(height: 18),
 
-                            // Password field.
                             TextField(
                               controller: _passwordController,
                               obscureText: _obscurePassword,
@@ -330,20 +349,25 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
                             const SizedBox(height: 8),
 
-                            // Actual backend login action.
                             SizedBox(
                               height: 53,
                               child: ElevatedButton(
-                                onPressed: (!_isLoading && _backendHealthy)
-                                    ? _handleLogin
-                                    : null,
+                                onPressed:
+                                    (!_isLoading && _backendHealthy)
+                                        ? _handleLogin
+                                        : null,
                                 style: ElevatedButton.styleFrom(
+                                  // Soft blue active button.
                                   backgroundColor:
-                                      const Color(0xFF14B8A6),
+                                      const Color(0xFF60A5FA),
                                   foregroundColor: Colors.white,
+
+                                  // Lighter blue when disabled.
                                   disabledBackgroundColor:
-                                      Colors.white24,
-                                  disabledForegroundColor: Colors.white60,
+                                      const Color(0xFFBFDBFE),
+                                  disabledForegroundColor:
+                                      const Color(0xFF64748B),
+
                                   elevation: 0,
                                   shape: RoundedRectangleBorder(
                                     borderRadius: BorderRadius.circular(13),
@@ -370,7 +394,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
                             const SizedBox(height: 18),
 
-                            // Registration navigation.
                             Row(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
@@ -383,6 +406,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                                     ),
                                   ),
                                 ),
+
                                 TextButton(
                                   onPressed: () {
                                     context.push('/register');
@@ -422,7 +446,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     );
   }
 
-  // Shared styling for the email and password fields.
   InputDecoration _inputDecoration({
     required String hint,
     required IconData icon,

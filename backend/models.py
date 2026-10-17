@@ -47,7 +47,11 @@ class Department(Base):
     org_id = Column(String(36), ForeignKey("organizations.id"), nullable=False, index=True)
     name = Column(String(255), nullable=False)
     description = Column(Text, nullable=True)
-    manager_id = Column(String(36), ForeignKey("employees.id"), nullable=True)
+    manager_id = Column(
+    String(36),
+    ForeignKey("employees.id", use_alter=True),
+    nullable=True,
+)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     

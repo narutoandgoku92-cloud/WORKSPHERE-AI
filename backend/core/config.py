@@ -1,3 +1,4 @@
+
 # backend/core/config.py - Application configuration
 import json
 import os
@@ -139,22 +140,38 @@ class Settings(BaseSettings):
 
         if environment in ("production", "staging"):
             if not self.SECRET_KEY:
-                raise ValueError("SECRET_KEY must be provided for production or staging environments")
+                raise ValueError(
+                    "SECRET_KEY must be provided for production or staging environments"
+                )
             if not self.DATABASE_URL:
-                raise ValueError("DATABASE_URL must be provided for production or staging environments")
+                raise ValueError(
+                    "DATABASE_URL must be provided for production or staging environments"
+                )
             if self.DATABASE_URL.startswith("sqlite"):
-                raise ValueError("SQLite DATABASE_URL is not allowed in production or staging")
+                raise ValueError(
+                    "SQLite DATABASE_URL is not allowed in production or staging"
+                )
             if not self.ALLOWED_HOSTS:
-                raise ValueError("ALLOWED_HOSTS must be provided for production or staging environments")
+                raise ValueError(
+                    "ALLOWED_HOSTS must be provided for production or staging environments"
+                )
             if not self.CORS_ORIGINS:
-                raise ValueError("CORS_ORIGINS must be provided for production or staging environments")
+                raise ValueError(
+                    "CORS_ORIGINS must be provided for production or staging environments"
+                )
         else:
             if not self.DATABASE_URL:
-                object.__setattr__(self, "DATABASE_URL", "sqlite:///./work_sphere_ai.db")
+                object.__setattr__(
+                    self, "DATABASE_URL", "sqlite:///./work_sphere_ai.db"
+                )
             if not self.SECRET_KEY:
                 object.__setattr__(self, "SECRET_KEY", "dev-secret-key-change-me")
             if not self.ALLOWED_HOSTS:
-                object.__setattr__(self, "ALLOWED_HOSTS", ["localhost", "127.0.0.1"])
+                object.__setattr__(
+                    self,
+                    "ALLOWED_HOSTS",
+                    ["localhost", "127.0.0.1", "testserver"],
+                )
             if not self.CORS_ORIGINS:
                 object.__setattr__(
                     self,
@@ -163,27 +180,31 @@ class Settings(BaseSettings):
                         "http://localhost:3000",
                         "http://127.0.0.1:3000",
                         "http://10.0.2.2:8000",
-                        "http://localhost:8000"
-                    ]
+                        "http://localhost:8000",
+                    ],
                 )
-        # If running on Render or similar PaaS, ensure common host patterns are allowed
-        render_detected = bool(os.getenv("RENDER") or os.getenv("RENDER_INTERNAL_HOSTNAME") or os.getenv("RENDER_SERVICE_ID") or os.getenv("RENDER_REGION"))
-        # Always accept onrender.com subdomains when Render is detected
-        if render_detected:
-            # allow both onrender.com and render.com subdomains
-            extras = ["*.onrender.com", "*.render.com"]
-            for ex in extras:
-                if ex not in self.ALLOWED_HOSTS:
-                    self.ALLOWED_HOSTS.append(ex)
 
-        # If ALLOWED_HOSTS contains a single '*' entry, treat it as wildcard and leave as-is
-        return self
+        # If running on Render or a similar PaaS, allow common host patterns.
+        render_detected = bool(
+            os.getenv("RENDER")
+            or os.getenv("RENDER_INTERNAL_HOSTNAME")
+            or os.getenv("RENDER_SERVICE_ID")
+            or os.getenv("RENDER_REGION")
+        )
+
+        if render_detected:
+            extras = ["*.onrender.com", "*.render.com"]
+            for host in extras:
+                if host not in self.ALLOWED_HOSTS:
+                    self.ALLOWED_HOSTS.append(host)
+
+        # If ALLOWED_HOSTS contains '*', the app's middleware handles it.
         return self
 
 
 @lru_cache()
 def get_settings() -> Settings:
-    """Get settings instance (cached)"""
+    """Get settings instance (cached)."""
     return Settings()
 
 
